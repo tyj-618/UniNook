@@ -1,61 +1,134 @@
-# RAG v1 混合检索设计
+# RAG v1 Hybrid Retrieval
 
-## 当前阶段
+## 1. Scope
 
-当前问答链路仍由 `PostRetrievalService` 提供 SQL 关键词召回。新增的 `PostRetriever` 和
-`RetrievalQuery` 将“调用方的权限范围”和“检索实现”分开：`AiAssistantService` 只负责认证、附近学校
-计算、提示词、模型调用和引用校验；检索器负责在 `allowedSchoolIds` 范围内找帖子。
+CampusCircle answers questions only with posts that the current user is allowed to view. The retrieval layer never accepts a school scope from the browser as a trusted value.
 
-因此，后续替换为混合检索时不会改变问答接口，也不会把学校权限下沉为可选逻辑。
-
-## 目标链路
+The request path is:
 
 ```text
-帖子创建 / 修改 / 删除
-  -> PostSearchEvent(eventId, postId, operation, contentVersion, occurredAt)
-  -> RocketMQ
-  -> 消费者回查 MySQL（事实源）
-  -> 生成 searchText 与 Embedding
-  -> Elasticsearch upsert / delete
-
-用户提问
-  -> Token -> user.schoolId -> nearby schoolIds
+access token
+  -> current user and campus
+  -> allowed nearby school IDs
   -> HybridPostRetriever
-     -> Elasticsearch 文本检索（BM25）
-     -> Elasticsearch 向量检索（kNN）
-     -> RRF 融合
-  -> TopK 帖子 -> Prompt -> 模型 -> 引用校验
+       -> Elasticsearch keyword retrieval
+       -> Elasticsearch vector retrieval
+       -> RRF rank fusion
+  -> reload normal posts from MySQL
+  -> prompt assembly, model response, and citation validation
 ```
 
-## 索引文档字段
+MySQL remains the source of truth. Elasticsearch only stores a search projection and is never used to decide whether a deleted, hidden, or out-of-scope post may be returned.
 
-| 字段 | 用途 |
+## 2. Indexing lifecycle
+
+```text
+post create / update / delete / hide / restore
+  -> transaction commits
+  -> PostSearchIndexEvent(postId)
+  -> direct handler, Outbox, or RocketMQ consumer
+  -> reload current post state from MySQL
+  -> build searchText
+  -> generate embedding
+  -> upsert or delete the Elasticsearch document
+```
+
+The event contains only the post ID. The consumer re-reads MySQL rather than trusting an old event payload, so repeated or delayed delivery converges to the latest state.
+
+`PostSearchIndexService` treats indexing as an asynchronous enhancement: an Elasticsearch or embedding failure is logged and does not roll back a successful post write. The assistant then falls back to the existing SQL retrieval path.
+
+## 3. Search document
+
+The `campuscircle-posts` index uses one document per post.
+
+| Field | Purpose |
 | --- | --- |
-| `postId` | 文档 ID 与最终引用 ID |
-| `schoolId` | 两路检索均强制过滤的权限字段 |
-| `categoryId` / `categoryName` | 过滤与补充上下文 |
-| `title` / `content` / `searchText` | 关键词检索与 Prompt 上下文 |
-| `embedding` | `dense_vector`，用于语义 kNN |
-| `contentVersion` | 拒绝延迟、重复或乱序事件 |
-| `updatedAt` | 排障与索引时效观测 |
+| `postId` | Elasticsearch document ID and citation identity |
+| `schoolId` | Mandatory permission filter for both retrieval paths |
+| `categoryId`, `categoryName` | Category context and keyword relevance |
+| `title`, `content` | User-facing searchable content |
+| `schoolName`, `campusName`, `city` | Location context for both search and generation |
+| `searchText` | A deterministic text projection used to generate the embedding |
+| `updatedAt` | Index inspection and freshness diagnostics |
+| `embedding` | `dense_vector` with cosine similarity |
 
-`searchText` 由标题、分类名称和正文拼接而成。MySQL 始终是事实源；消息只传递变化通知，消费者不信任
-消息内的帖子正文。
+`searchText` is built from title, category, school, campus, city, and body. Keeping this projection deterministic is important: a post update produces a new vector from a clearly defined representation.
 
-## 本地 Elasticsearch
+## 4. Hybrid ranking
 
-Elasticsearch 使用可选的 `search` Compose profile，避免默认启动 MySQL/Redis 时额外占用内存：
+The keyword path uses Elasticsearch `multi_match` across title, category, `searchText`, and content. The vector path uses native `knn` over `embedding`. Both apply the same `schoolId` hard filter.
+
+The two result lists are fused with Reciprocal Rank Fusion:
+
+```text
+score(post) += 1 / (k + rank)
+```
+
+where `k` defaults to `60` and rank starts from `1`. RRF combines rank positions rather than raw BM25 and vector scores, which avoids comparing incomparable score scales. After fusion, CampusCircle reloads the chosen post IDs from MySQL in fused order and removes any no-longer-normal post.
+
+## 5. Local setup
+
+Start Elasticsearch without starting the complete application stack:
 
 ```powershell
 docker compose --profile search up -d elasticsearch
 curl http://localhost:9200
 ```
 
-本阶段的 `CAMPUSCIRCLE_SEARCH_ENABLED` 保持 `false`。下一阶段接入 Embedding 客户端、索引消费者和
-`HybridPostRetriever` 后才将它设为 `true`。
+For pipeline verification, add the following to the local `.env`:
 
-## 降级原则
+```dotenv
+CAMPUSCIRCLE_SEARCH_ENABLED=true
+CAMPUSCIRCLE_SEARCH_EMBEDDING_PROVIDER=mock
+```
 
-- Elasticsearch 不可用：退回当前 SQL 关键词检索。
-- Embedding 不可用：可继续使用 Elasticsearch 文本检索；两者都不可用则退回 SQL。
-- 模型不可用：返回受权限过滤的候选帖子引用和明确的失败提示，不生成未经验证的结论。
+The mock provider produces deterministic vectors and proves event delivery, index mapping, kNN queries, RRF, and fallback behavior. It is not a semantic embedding model and must not be used to evaluate answer quality.
+
+For real semantic retrieval, configure an OpenAI-compatible embedding provider:
+
+```dotenv
+CAMPUSCIRCLE_SEARCH_ENABLED=true
+CAMPUSCIRCLE_SEARCH_EMBEDDING_PROVIDER=openai-compatible
+CAMPUSCIRCLE_SEARCH_EMBEDDING_BASE_URL=https://provider.example/v1
+CAMPUSCIRCLE_SEARCH_EMBEDDING_API_KEY=local-only-secret
+CAMPUSCIRCLE_SEARCH_EMBEDDING_MODEL=embedding-model-name
+CAMPUSCIRCLE_SEARCH_EMBEDDING_DIMENSIONS=1024
+```
+
+The selected model's output dimension must exactly equal `CAMPUSCIRCLE_SEARCH_EMBEDDING_DIMENSIONS`. Never commit a real key.
+
+## 6. Rebuild and operations
+
+After enabling search for an existing database, rebuild the post projection once:
+
+```text
+POST /api/admin/search/posts/reindex
+Authorization: Bearer <administrator access token>
+```
+
+The endpoint returns the number of posts processed. It is safe to run again because every document is reconciled from the current MySQL row.
+
+Useful local checks:
+
+```powershell
+curl http://localhost:9200/campuscircle-posts/_count
+curl http://localhost:9200/campuscircle-posts/_mapping
+```
+
+## 7. Failure behavior
+
+- Elasticsearch unavailable: `HybridPostRetriever` falls back to SQL keyword retrieval.
+- Embedding unavailable or invalid: the same SQL fallback applies.
+- A post is deleted or hidden before an index event is consumed: reconciliation deletes its document.
+- A retrieved Elasticsearch document is stale: MySQL reloading removes it from the final context.
+- The generation model fails: CampusCircle returns a controlled failure result rather than inventing an answer.
+
+## 8. Evaluation checklist
+
+Before claiming semantic quality, create a small query set with expected post IDs and record:
+
+1. Whether an expected result enters TopK.
+2. Keyword-only, vector-only, and RRF ranks.
+3. Whether the post belongs to the authorized school scope.
+4. Whether the final answer cites only retrieved posts.
+5. Whether SQL fallback still produces a usable result when search is stopped.

@@ -18,6 +18,10 @@ spring:
   sql:
     init:
       mode: never
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
 
 mybatis-plus:
   configuration:
@@ -31,7 +35,20 @@ server:
       enabled: true
       force-response: true
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 campuscircle:
+  auth:
+    refresh-cookie-secure: ${CAMPUSCIRCLE_AUTH_REFRESH_COOKIE_SECURE:false}
+  storage:
+    avatar-directory: ${CAMPUSCIRCLE_AVATAR_STORAGE_DIR:./data/uploads/avatars}
   view-count:
     flush-interval-seconds: ${CAMPUSCIRCLE_VIEW_COUNT_FLUSH_INTERVAL_SECONDS:10}
   hot-post-cache:
@@ -57,6 +74,12 @@ campuscircle:
     enabled: ${CAMPUSCIRCLE_SEARCH_ENABLED:false}
     base-url: ${CAMPUSCIRCLE_SEARCH_BASE_URL:http://localhost:9200}
     post-index: ${CAMPUSCIRCLE_SEARCH_POST_INDEX:campuscircle-posts}
+    request-timeout-seconds: ${CAMPUSCIRCLE_SEARCH_REQUEST_TIMEOUT_SECONDS:5}
     embedding-dimensions: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_DIMENSIONS:1024}
+    embedding-provider: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_PROVIDER:mock}
+    embedding-base-url: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_BASE_URL:}
+    embedding-api-key: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_API_KEY:}
+    embedding-model: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_MODEL:}
+    embedding-timeout-seconds: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_TIMEOUT_SECONDS:20}
     candidate-limit: ${CAMPUSCIRCLE_SEARCH_CANDIDATE_LIMIT:20}
     rrf-rank-constant: ${CAMPUSCIRCLE_SEARCH_RRF_RANK_CONSTANT:60}

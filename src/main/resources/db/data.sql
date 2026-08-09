@@ -2,14 +2,31 @@ SET NAMES utf8mb4;
 
 USE campuscircle;
 
-INSERT INTO school (id, name, province, city, latitude, longitude, status)
+INSERT INTO university (id, name, province, city, status)
 VALUES
-    (1, '南京大学', '江苏省', '南京市', 32.115055, 118.958743, 0),
-    (2, '东南大学', '江苏省', '南京市', 31.887891, 118.818982, 0),
-    (3, '南京航空航天大学', '江苏省', '南京市', 32.034454, 118.797028, 0),
-    (4, '复旦大学', '上海市', '上海市', 31.298822, 121.503223, 0)
+    (1, '南京大学', '江苏省', '南京市', 0),
+    (2, '东南大学', '江苏省', '南京市', 0),
+    (3, '南京航空航天大学', '江苏省', '南京市', 0),
+    (4, '复旦大学', '上海市', '上海市', 0)
 ON DUPLICATE KEY UPDATE
     name = VALUES(name),
+    province = VALUES(province),
+    city = VALUES(city),
+    status = VALUES(status),
+    updated_at = CURRENT_TIMESTAMP;
+
+INSERT INTO school (id, university_id, name, campus_name, province, city, latitude, longitude, status)
+VALUES
+    (1, 1, '南京大学', '仙林校区', '江苏省', '南京市', 32.115055, 118.958743, 0),
+    (2, 2, '东南大学', '九龙湖校区', '江苏省', '南京市', 31.887891, 118.818982, 0),
+    (3, 3, '南京航空航天大学', '将军路校区', '江苏省', '南京市', 32.034454, 118.797028, 0),
+    (4, 4, '复旦大学', '邯郸校区', '上海市', '上海市', 31.298822, 121.503223, 0),
+    (5, 1, '南京大学', '鼓楼校区', '江苏省', '南京市', 32.056691, 118.784265, 0),
+    (6, 2, '东南大学', '四牌楼校区', '江苏省', '南京市', 32.055119, 118.796648, 0)
+ON DUPLICATE KEY UPDATE
+    university_id = VALUES(university_id),
+    name = VALUES(name),
+    campus_name = VALUES(campus_name),
     province = VALUES(province),
     city = VALUES(city),
     latitude = VALUES(latitude),

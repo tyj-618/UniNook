@@ -1,8 +1,12 @@
 HELP.md
 target/
+frontend/node_modules/
+frontend/dist/
 .env
 .env.*
 !.env.example
+deploy/production.env
+deploy/backups/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

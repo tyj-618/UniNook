@@ -8,7 +8,7 @@ services:
       MYSQL_DATABASE: campuscircle
       TZ: Asia/Shanghai
     ports:
-      - "${CAMPUSCIRCLE_MYSQL_PORT:-3307}:3306"
+      - "${CAMPUSCIRCLE_BIND_ADDRESS:-127.0.0.1}:${CAMPUSCIRCLE_MYSQL_PORT:-3307}:3306"
     volumes:
       - campuscircle-mysql-data:/var/lib/mysql
       - ./src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -25,7 +25,7 @@ services:
     container_name: campuscircle-redis
     restart: unless-stopped
     ports:
-      - "${CAMPUSCIRCLE_REDIS_PORT:-6379}:6379"
+      - "${CAMPUSCIRCLE_BIND_ADDRESS:-127.0.0.1}:${CAMPUSCIRCLE_REDIS_PORT:-6379}:6379"
     volumes:
       - campuscircle-redis-data:/data
     command: ["redis-server", "--appendonly", "yes"]
@@ -47,7 +47,7 @@ services:
       xpack.security.enrollment.enabled: "false"
       ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
-      - "${CAMPUSCIRCLE_ES_PORT:-9200}:9200"
+      - "${CAMPUSCIRCLE_BIND_ADDRESS:-127.0.0.1}:${CAMPUSCIRCLE_ES_PORT:-9200}:9200"
     volumes:
       - campuscircle-elasticsearch-data:/usr/share/elasticsearch/data
     healthcheck:
@@ -74,6 +74,8 @@ services:
       CAMPUSCIRCLE_REDIS_PORT: 6379
       CAMPUSCIRCLE_REDIS_PASSWORD: ""
       CAMPUSCIRCLE_REDIS_DATABASE: 0
+      CAMPUSCIRCLE_AUTH_REFRESH_COOKIE_SECURE: ${CAMPUSCIRCLE_AUTH_REFRESH_COOKIE_SECURE:-false}
+      CAMPUSCIRCLE_AVATAR_STORAGE_DIR: /app/data/uploads/avatars
       CAMPUSCIRCLE_AI_PROVIDER: ${CAMPUSCIRCLE_AI_PROVIDER:-mock}
       CAMPUSCIRCLE_AI_BASE_URL: ${CAMPUSCIRCLE_AI_BASE_URL:-}
       CAMPUSCIRCLE_AI_API_KEY: ${CAMPUSCIRCLE_AI_API_KEY:-}
@@ -87,11 +89,17 @@ services:
       CAMPUSCIRCLE_SEARCH_ENABLED: ${CAMPUSCIRCLE_SEARCH_ENABLED:-false}
       CAMPUSCIRCLE_SEARCH_BASE_URL: http://elasticsearch:9200
       CAMPUSCIRCLE_SEARCH_POST_INDEX: ${CAMPUSCIRCLE_SEARCH_POST_INDEX:-campuscircle-posts}
+      CAMPUSCIRCLE_SEARCH_REQUEST_TIMEOUT_SECONDS: ${CAMPUSCIRCLE_SEARCH_REQUEST_TIMEOUT_SECONDS:-5}
       CAMPUSCIRCLE_SEARCH_EMBEDDING_DIMENSIONS: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_DIMENSIONS:-1024}
+      CAMPUSCIRCLE_SEARCH_EMBEDDING_PROVIDER: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_PROVIDER:-mock}
+      CAMPUSCIRCLE_SEARCH_EMBEDDING_BASE_URL: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_BASE_URL:-}
+      CAMPUSCIRCLE_SEARCH_EMBEDDING_API_KEY: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_API_KEY:-}
+      CAMPUSCIRCLE_SEARCH_EMBEDDING_MODEL: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_MODEL:-}
+      CAMPUSCIRCLE_SEARCH_EMBEDDING_TIMEOUT_SECONDS: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_TIMEOUT_SECONDS:-20}
       CAMPUSCIRCLE_SEARCH_CANDIDATE_LIMIT: ${CAMPUSCIRCLE_SEARCH_CANDIDATE_LIMIT:-20}
       CAMPUSCIRCLE_SEARCH_RRF_RANK_CONSTANT: ${CAMPUSCIRCLE_SEARCH_RRF_RANK_CONSTANT:-60}
     ports:
-      - "${SERVER_PORT:-8080}:8080"
+      - "${CAMPUSCIRCLE_BIND_ADDRESS:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     depends_on:
       mysql:
         condition: service_healthy
@@ -100,8 +108,24 @@ services:
       elasticsearch:
         condition: service_healthy
         required: false
+    volumes:
+      - campuscircle-upload-data:/app/data/uploads
+
+  web:
+    profiles:
+      - app
+    build:
+      context: ./frontend
+    container_name: campuscircle-web
+    restart: unless-stopped
+    ports:
+      - "${CAMPUSCIRCLE_BIND_ADDRESS:-127.0.0.1}:${CAMPUSCIRCLE_WEB_PORT:-8088}:80"
+    depends_on:
+      app:
+        condition: service_started
 
 volumes:
   campuscircle-mysql-data:
   campuscircle-redis-data:
   campuscircle-elasticsearch-data:
+  campuscircle-upload-data:

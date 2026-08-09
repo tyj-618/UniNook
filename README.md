@@ -1,388 +1,208 @@
 # CampusCircle
 
-CampusCircle 是一个基于学校地理位置的校园社区后端服务，支持学生绑定所属学校，并按距离范围查看附近学校的帖子。项目提供用户认证、个人资料、学校检索、帖子发布、评论互动、点赞、站内通知、后台管理和校园信息智能问答等能力，重点放在业务建模、接口规范、持久层设计、缓存容错、事件解耦、模型服务接入和集成测试等后端工程实践。
+CampusCircle 是一个面向高校学生的地理位置校园社区。用户绑定具体校区后，可按同校区、同校、10 km、20 km 或同市范围浏览内容；系统同时提供内容互动、通知、热门榜、后台治理，以及带权限范围约束的校园问答能力。
 
-## Features
+## 核心能力
 
-- 用户注册、登录、退出和 Token 校验
-- 用户资料维护、学校绑定、公开主页、用户发帖和评论查询
-- 学校搜索、附近学校查询、附近学校帖子 Feed，支持传统分页和游标分页
-- 分类、帖子列表、帖子详情、发帖、编辑和删除，发帖自动归属到用户所属学校
-- 评论、点赞、取消点赞、点赞状态查询
-- 评论/点赞触发站内通知，支持未读数和批量已读
-- 管理端隐藏/恢复帖子、禁用/启用用户
-- 热门帖子排行榜、浏览量批量刷库、Redis 异常时数据库降级
-- 基于附近学校帖子检索的校园信息智能问答，支持 Mock 和 OpenAI 兼容模型服务
-- 事件发布与消费扩展
-- 面向混合检索的 RAG v1 底座：检索接口抽象、ES 本地运行配置和权限范围前置约束
+- 用户注册、首次昵称确认、登录、头像本地上传、资料设置、公开个人主页与互动记录，以及短期 Access Token 与 HttpOnly Refresh Token 会话续期
+- 帖子、评论、点赞、通知、分类和后台管理
+- 高校-校区模型：高校统一归档，校区拥有独立经纬度；发现范围支持同校区、同校、10 km、20 km 与同市
+- 发现层与互动层分离：附近 Feed、热门榜和校园助手按学校范围检索；通知、详情、评论、点赞与个人主页可直接访问已知内容
+- Redis 热榜、附近学校缓存、浏览量批量刷库与 Redis 故障降级
+- 评论/点赞事件与站内通知；RocketMQ 模式采用 Transactional Outbox，支持至少一次投递与消费者幂等
+- AI 问答：Token 身份认证、附近学校权限过滤、Elasticsearch 关键词与向量检索、RRF 融合、SQL 降级、Prompt 组装、模型调用、引用校验与用户级限流
+- 问题订阅闭环：发起者、订阅者与回答者角色分离；每篇帖子或每条一级评论均可发起一个问题，评论问题会聚合展示在所属帖子中；回答者通过真实评论提交候选答复，发起者可通过多条有效答复后结束或重新开启问题，并通过 Outbox/RocketMQ 通知订阅者
+- Vue 3 前端：登录注册、附近 Feed、筛选、帖子详情、个人主页、互动记录、错误反馈与移动端导航
+- 产品闭环：首次登录学校绑定、发帖、帖子详情互动、公开主页、资料设置、站内通知与校园助手
 
-## Tech Stack
+## 问题订阅与候选答复
 
-| 类型 | 技术 |
+CampusCircle 将“等待结论”的帖子或评论建模为可订阅的问题，而不是普通的帖子收藏。内容作者发起问题，其他用户独立订阅；回答者通过真实评论提交候选答复，发起者可通过多条有效答复，并在确认信息已足够后主动结束问题。若后续仍需补充信息，发起者可重新开启问题，保留已有通过答复和订阅记录并继续收集候选答复。已完成问题仍允许新用户订阅并直接查看全部已通过答复；删除问题会通知订阅者并清理失效订阅。
+
+当前实现包含订阅的进行中/已完成分栏、评论问题的帖子内聚合、候选答复预览与完整列表、通过/标记无效、独立结束/重新开启问题、删除保护，以及基于 Transactional Outbox 和 RocketMQ 的生命周期通知。帖子作者在本帖评论或回复时会显示“作者”标签。详细产品规则见 [问题追踪设计与开发路线](docs/question-tracking-design.md)，接口见 [API 文档](docs/API.md)。
+
+## 技术栈
+
+| 层次 | 技术 |
 | --- | --- |
-| 语言与框架 | Java 17, Spring Boot 4, Spring Web, Spring Validation |
-| 持久层 | MyBatis-Plus, MySQL |
-| 缓存与排行 | Redis, ZSet |
-| 消息事件 | RocketMQ |
-| AI 应用 | OpenAI-compatible API, Qwen, RAG, Elasticsearch（混合检索底座） |
-| 安全 | BCrypt password hashing, Bearer Token |
-| 工程化 | Docker, Docker Compose |
-| 测试 | JUnit, Spring Boot Test, H2 |
+| 后端 | Java 17、Spring Boot 4、Spring Validation、MyBatis-Plus、MySQL |
+| 缓存与消息 | Redis、RocketMQ、Transactional Outbox |
+| AI 与检索 | OpenAI-compatible API、Qwen、RAG、Elasticsearch、Embedding、kNN、RRF 混合检索 |
+| 前端 | Vue 3、TypeScript、Vue Router、Axios、Vite、Lucide |
+| 交付与测试 | Docker、Docker Compose、Nginx、JUnit、Spring Boot Test、H2 |
 
-## Architecture
+## 架构概览
+
+```mermaid
+flowchart LR
+    Browser[浏览器] --> Web[Vue 3 + Nginx]
+    Web --> App[Spring Boot]
+    App --> MySQL[(MySQL)]
+    App --> Redis[(Redis)]
+    App --> MQ[RocketMQ]
+    App -. 可选混合检索 .-> ES[(Elasticsearch)]
+    App -. 可选助手服务 .-> Provider[兼容服务]
+```
+
+## 项目结构
 
 ```text
-Controller -> Service -> Mapper(MyBatis-Plus) -> MySQL
-                    |-> Redis
-                    |-> RocketMQ
-                    |-> Elasticsearch（可选，RAG v1）
-                    └-> AI Model API
+src/main/java/com/campuscircle
+├── ai          AI 问答、检索、Prompt 与模型客户端
+├── auth        会话、认证与当前用户识别
+├── event       领域事件、Outbox、RocketMQ 投递与消费
+├── post        帖子、Feed、热榜与浏览量
+├── school      高校/校区选择、范围计算与缓存
+├── comment / like / notice / admin / user
+└── common / exception
+
+frontend/
+├── src/api     Axios 客户端与接口模块
+├── src/auth    会话状态
+├── src/pages   登录、注册、Feed 页面
+└── src/components
 ```
 
-- `Controller`：处理 REST API 请求、参数校验和统一响应。
-- `Service`：承载业务规则、登录校验、权限判断、事件发布和排行榜协调。
-- `Mapper`：基于 MyBatis-Plus 处理实体映射、单表 CRUD、复杂查询和统计更新。
-- `AI`：在用户附近学校权限范围内检索帖子，组装提示词并调用模型服务，校验模型返回的帖子引用。
-- `Common / Exception`：提供统一响应结构、错误码、业务异常和全局异常处理。
+## 设计文档
 
-项目结构：
+- [后续开发路线图](docs/development-roadmap.md)
+- [问题追踪设计与开发路线](docs/question-tracking-design.md)
+- [RAG v1 混合检索设计](docs/rag-v1-hybrid-retrieval.md)
+- [产品闭环审查记录](docs/product-closure-audit.md)
+- [首轮发布范围](docs/release-scope.md)
+- [首次部署与回滚手册](docs/deployment-runbook.md)
+- [演示与项目讲解指南](docs/demo-guide.md)
+- [高校-校区迁移脚本](docs/db-migrations/003_university_campus_scope.sql)
 
-```text
-src/main/java/com/tyj/campuscircle
-├── admin       后台管理
-├── ai          校园信息智能问答、帖子检索、提示词和模型客户端
-├── auth        注册、登录、Token、当前用户识别
-├── category    帖子分类
-├── comment     评论
-├── common      通用响应、分页响应、游标分页、错误码
-├── event       领域事件、RocketMQ 发布和消费
-├── exception   业务异常、全局异常处理
-├── like        点赞
-├── notice      站内通知
-├── post        帖子、热门排行榜、浏览量批量刷新
-├── school      学校检索、距离计算、附近学校查询
-└── user        用户资料
-```
+## 本地启动
 
-## Highlights
-
-- **持久层重构**：使用 MyBatis-Plus 建模用户、帖子、评论、点赞、通知等核心表，通过实体映射承接基础 CRUD，通过注解 SQL 保留复杂列表、详情和统计查询的可读性。
-- **位置化社区模型**：抽象学校实体，用户和帖子都关联学校；发帖时自动写入用户所属学校，并支持按半径聚合附近学校帖子，形成区别于普通校园论坛的区域化信息流。
-- **附近学校缓存**：在 `redis` profile 下缓存指定学校和半径对应的附近学校列表，降低高频 Feed 查询中的重复距离计算和数据库访问；默认 profile 使用直查实现，便于本地测试。
-- **游标分页 Feed**：使用 `created_at + id` 组成稳定游标，避免数据持续新增时传统页码分页产生重复或遗漏，并通过 URL-safe Base64 封装游标传输。
-- **热榜缓存设计**：使用 Redis ZSet 维护热门帖子排行，MySQL `post_stat.hot_score` 作为持久化热度来源；缓存为空或过期时支持回源重建，并使用短 TTL、随机抖动和 Lua 原子释放重建锁降低击穿风险。
-- **缓存容错降级**：Redis 读取、写入或锁操作异常时保留数据库查询结果和主业务执行结果，避免缓存故障扩大为接口整体不可用。
-- **范围约束问答**：根据 Token 获取当前用户和所属学校，仅在指定半径内的正常帖子中检索上下文；模型返回后再次校验引用 ID，避免回答引用越权或不存在的帖子。
-- **模型接入封装**：抽象 `AiModelClient`，默认使用 Mock 完成本地开发，并支持通过 OpenAI 兼容协议接入 Qwen 等模型；提供超时、有限重试、用户级限流、结构化输出和 Token 用量日志。
-- **事件解耦通知**：抽象评论/点赞领域事件，默认同步消费，启用 RocketMQ 后使用事务消息投递；每个事件携带独立 `eventId`，通知侧将其写入唯一 `event_key`，既能抵抗重复投递，也能正确识别取消后再次点赞等新事件。
-- **浏览量削峰**：使用 `ConcurrentHashMap + LongAdder + ScheduledExecutorService` 聚合浏览量增量，定时批量刷库，减少高频浏览场景下的数据库写压力。
-- **浏览量失败重试**：定时刷库时通过读写锁换出计数缓冲区；数据库短暂异常时将未成功写入的增量合并回当前缓冲区，避免 `sumThenReset()` 后计数丢失。
-- **容器 JVM 边界**：镜像基于 JDK 17 的容器内存感知能力，使用 `InitialRAMPercentage`、`MaxRAMPercentage` 和 `ExitOnOutOfMemoryError` 控制堆内存与 OOM 行为，支持通过 `JAVA_TOOL_OPTIONS` 覆盖。
-- **接口一致性**：统一响应结构、错误码枚举、参数校验、业务异常和全局异常处理，保证正常返回和异常返回格式稳定。
-- **集成测试覆盖**：基于 H2 内存数据库覆盖注册登录、分类、发帖、评论、点赞、通知和权限边界流程。
-
-## API
-
-核心接口清单见 [docs/API.md](docs/API.md)，包括认证、用户、学校、帖子、评论、点赞、通知、校园信息智能问答和后台管理接口。
-
-常见请求示例：
-
-```http
-POST /api/auth/register
-Content-Type: application/json
-```
-
-```json
-{
-  "username": "alice",
-  "password": "123456",
-  "nickname": "Alice"
-}
-```
-
-```http
-GET /api/schools/nearby?schoolId=1&radiusKm=30
-```
-
-```http
-GET /api/posts/feed?radiusKm=30
-Authorization: Bearer <token>
-```
-
-```http
-GET /api/posts/feed/cursor?radiusKm=30&size=10
-Authorization: Bearer <token>
-```
-
-```http
-POST /api/ai/assistant/ask
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-```json
-{
-  "question": "附近有哪些适合复习的地方？",
-  "radiusKm": 10
-}
-```
-
-```http
-POST /api/posts
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-```json
-{
-  "categoryId": 1,
-  "title": "期末复习资料怎么整理？",
-  "content": "想问问大家期末复习有什么方法。"
-}
-```
-
-## Quick Start
-
-### 方式一：Docker Compose 启动依赖
-
-适合本地开发。Compose 会启动 MySQL 和 Redis，并自动执行 `src/main/resources/db` 下的初始化脚本。
-
-1. 准备本地环境变量：
-
-```bash
-cp .env.example .env
-```
-
-Windows PowerShell:
+1. 创建本地配置。
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-2. 启动 MySQL 和 Redis：
+2. 启动 MySQL 和 Redis。
 
-```bash
+```powershell
 docker compose up -d mysql redis
 ```
 
-3. 使用 Redis profile 启动后端服务：
-
-Linux/macOS:
-
-```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=redis
-```
-
-Windows PowerShell:
+3. 启动后端。
 
 ```powershell
 .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=redis"
 ```
 
-默认地址：
+4. 启动 Vue 前端。
 
-```text
-http://localhost:8080
+```powershell
+Set-Location frontend
+npm.cmd install
+npm.cmd run dev
 ```
 
-常用命令：
+前端默认访问 `http://localhost:5173`，开发服务器会将 `/api` 代理到后端 `http://localhost:8080`。
 
-```bash
-docker compose ps
-docker compose logs -f mysql
-docker compose logs -f redis
-docker compose down
+登录成功后，后端会把 Refresh Token 写入仅限 `/api/auth` 使用的 HttpOnly Cookie；浏览器端只保存短期 Access Token。Access Token 失效时，Axios 会合并并发的刷新请求、轮换 Refresh Token，并重放原请求；刷新失败才清除本地登录态。生产环境启用 HTTPS 时，请在 `.env` 中设置：
+
+```dotenv
+CAMPUSCIRCLE_AUTH_REFRESH_COOKIE_SECURE=true
 ```
 
-### 方式二：完整容器化启动
+## 完整容器化启动
 
-适合验证部署链路。该方式会构建后端镜像，并启动 MySQL、Redis 和应用服务。
-
-```bash
-docker compose --profile app up -d --build
+```powershell
+docker compose --profile app --profile search up -d --build
 ```
 
-查看应用日志：
+- Web：`http://localhost:8088`，可通过 `CAMPUSCIRCLE_WEB_PORT` 修改
+- 后端：`http://localhost:8080`
+- MySQL：`localhost:3307`
+- Redis：`localhost:6379`
 
-```bash
-docker compose logs -f app
+启动完成后可执行健康与入口检查：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 ```
+
+生产部署必须使用 [生产配置示例](deploy/production.env.example) 和 [首次部署与回滚手册](docs/deployment-runbook.md)，并确认 HTTPS 下的 `CAMPUSCIRCLE_AUTH_REFRESH_COOKIE_SECURE=true`。
 
 停止服务：
 
-```bash
+```powershell
 docker compose --profile app down
 ```
 
-### 方式三：手动初始化数据库
+## 可选能力
 
-如果不使用 Docker Compose，可以创建 MySQL 数据库后执行：
+### 问题追踪
 
-```sql
-source src/main/resources/db/schema.sql;
-source src/main/resources/db/data.sql;
-```
+项目以“问题订阅 + 候选答复 + 发起者确认”为唯一的结果追踪链路：发起者可以结束、重新开启或删除问题；订阅者可以在进行中和已完成状态下订阅或取消订阅；多个有效答复可以并存。
 
-然后参考 `.env.example` 准备本地配置。`.env` 仅用于本地记录，不提交到仓库；启动前可将变量配置到系统环境变量、IDE 运行配置或命令行会话中。
+### AI 模型
 
-### 环境变量
-
-| 环境变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `SERVER_PORT` | `8080` | 服务端口 |
-| `CAMPUSCIRCLE_MYSQL_PORT` | `3307` | Compose 暴露到宿主机的 MySQL 端口，避免和本机 MySQL 默认端口冲突 |
-| `CAMPUSCIRCLE_DB_URL` | `jdbc:mysql://localhost:3307/campuscircle?...` | MySQL 连接地址 |
-| `CAMPUSCIRCLE_DB_USERNAME` | `root` | MySQL 用户名 |
-| `CAMPUSCIRCLE_DB_PASSWORD` | `campuscircle_dev_pwd` | MySQL 密码 |
-| `CAMPUSCIRCLE_REDIS_HOST` | `localhost` | Redis 主机 |
-| `CAMPUSCIRCLE_REDIS_PORT` | `6379` | Redis 端口 |
-| `CAMPUSCIRCLE_REDIS_DATABASE` | `0` | Redis 逻辑库 |
-| `CAMPUSCIRCLE_VIEW_COUNT_FLUSH_INTERVAL_SECONDS` | `10` | 浏览量批量刷库间隔 |
-| `CAMPUSCIRCLE_HOT_POST_CACHE_TTL_SECONDS` | `300` | 热门帖子缓存 TTL |
-| `CAMPUSCIRCLE_HOT_POST_CACHE_JITTER_SECONDS` | `60` | 热门帖子缓存随机抖动 |
-| `CAMPUSCIRCLE_HOT_POST_EMPTY_CACHE_TTL_SECONDS` | `30` | 空结果缓存 TTL |
-| `CAMPUSCIRCLE_HOT_POST_REBUILD_LOCK_TTL_SECONDS` | `10` | 热榜回源重建锁 TTL |
-| `CAMPUSCIRCLE_NEARBY_SCHOOL_CACHE_TTL_SECONDS` | `300` | 附近学校列表缓存 TTL |
-| `CAMPUSCIRCLE_NEARBY_SCHOOL_CACHE_JITTER_SECONDS` | `60` | 附近学校列表缓存随机抖动 |
-| `CAMPUSCIRCLE_AI_PROVIDER` | `mock` | 模型服务类型，可设置为 `mock` 或 `openai-compatible` |
-| `CAMPUSCIRCLE_AI_BASE_URL` | 空 | OpenAI 兼容模型服务的基础地址 |
-| `CAMPUSCIRCLE_AI_API_KEY` | 空 | 模型服务 API Key，仅通过本地环境变量或 `.env` 提供 |
-| `CAMPUSCIRCLE_AI_MODEL` | 空 | 调用的模型名称 |
-| `CAMPUSCIRCLE_AI_TIMEOUT_SECONDS` | `20` | 单次模型调用超时时间 |
-| `CAMPUSCIRCLE_AI_MAX_RETRIES` | `1` | 可重试异常的最大重试次数 |
-| `CAMPUSCIRCLE_AI_MAX_REQUESTS_PER_MINUTE` | `5` | 单用户每分钟最大问答请求数 |
-| `CAMPUSCIRCLE_AI_MAX_OUTPUT_TOKENS` | `600` | 非结构化模式下的最大输出 Token 数 |
-| `CAMPUSCIRCLE_AI_STRUCTURED_OUTPUT` | `false` | 是否要求模型使用 JSON Object 格式响应 |
-| `CAMPUSCIRCLE_AI_ENABLE_THINKING` | 空 | 是否启用模型思考模式，留空表示使用模型默认值 |
-| `JAVA_TOOL_OPTIONS` | 镜像内置 JVM 参数 | 可覆盖容器的 JVM 启动参数，例如堆内存比例和 GC 日志配置 |
-
-### 本地 Maven 启动
-
-Linux/macOS:
-
-```bash
-./mvnw spring-boot:run
-```
-
-Windows PowerShell:
-
-```powershell
-.\mvnw.cmd spring-boot:run
-```
-
-默认地址：
-
-```text
-http://localhost:8080
-```
-
-## Optional Profiles
-
-### Redis
-
-默认 profile 不依赖 Redis：
-
-- `InMemoryTokenStore` 存储登录 Token。
-- `NoOpNearbySchoolCacheStore` 直接从 MySQL 查询附近学校。
-- `NoOpHotPostRankStore` 直接从 MySQL 查询热门帖子。
-
-启用 `redis` profile 后：
-
-- `RedisTokenStore` 使用 Redis 存储 Token。
-- `RedisNearbySchoolCacheStore` 缓存附近学校列表。
-- `RedisHotPostRankStore` 使用 Redis ZSet 维护热门帖子排行榜。
-
-启动命令：
-
-```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=redis
-```
-
-Windows PowerShell:
-
-```powershell
-.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=redis"
-```
-
-### RocketMQ
-
-默认 profile 下，评论和点赞事件同步处理，不依赖 RocketMQ。
-
-启用 `rocketmq` profile 后：
-
-- `RocketMqDomainEventPublisher` 发布评论/点赞事件。
-- `RocketMqEventConsumer` 消费事件并生成站内通知。
-
-配置文件：
-
-```text
-src/main/resources/application-rocketmq.yaml
-```
-
-启动命令：
-
-```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=rocketmq
-```
-
-同时启用 Redis 和 RocketMQ：
-
-```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=redis,rocketmq
-```
-
-### AI Model
-
-默认配置使用 Mock 模型客户端，不需要 API Key，也不会发送外部请求。接入兼容 OpenAI Chat Completions 协议的模型服务时，在本地 `.env` 或运行环境中配置：
+默认使用 `mock`，不会发起外部请求。接入 OpenAI 兼容模型时，在 `.env` 中填写：
 
 ```dotenv
 CAMPUSCIRCLE_AI_PROVIDER=openai-compatible
 CAMPUSCIRCLE_AI_BASE_URL=https://example.com/compatible-mode/v1
 CAMPUSCIRCLE_AI_API_KEY=your-local-api-key
 CAMPUSCIRCLE_AI_MODEL=your-model-name
-CAMPUSCIRCLE_AI_STRUCTURED_OUTPUT=true
 CAMPUSCIRCLE_AI_ENABLE_THINKING=false
 ```
 
-`.env` 已被 Git 忽略，仓库只保留不含真实凭证的 `.env.example`。启动完整容器环境时，Docker Compose 会将这些变量传入应用容器。
+真实 API Key 只保存在 `.env` 或部署环境变量中，绝不提交到仓库。
 
-### Elasticsearch（RAG v1 预备环境）
+### 认证会话
 
-Elasticsearch 通过独立的 `search` profile 提供，不会影响只使用 MySQL 与 Redis 的默认开发环境：
+Docker 与生产环境启用 `redis` profile 后，Refresh Token 会通过 Redis 保存为可撤销的会话状态，并以 HttpOnly、SameSite=Lax Cookie 交付给浏览器。每次调用刷新接口都会轮换 Refresh Token，旧 Token 立即失效；退出登录会同时撤销当前 Access Token 和 Refresh Token。未启用 `redis` profile 时，项目使用仅适合本地调试的进程内会话实现。本地 HTTP 环境保持 `CAMPUSCIRCLE_AUTH_REFRESH_COOKIE_SECURE=false`，部署到 HTTPS 后必须改为 `true`。
+
+### RocketMQ 与 Outbox
+
+启用 `rocketmq` profile 后，评论和点赞会在同一数据库事务中写入 `event_outbox`；后台调度器成功投递后再标记事件完成，投递失败会指数退避重试。消费者按 `eventId` 写入通知幂等键，允许消息重复而不会产生重复通知。
+
+新建数据库会自动创建 Outbox 表。已有本地 MySQL 数据库需要执行一次 `src/main/resources/db/schema.sql` 中的 `event_outbox` 建表语句后再启用该 profile。
+
+### 已有数据库升级
+
+新建数据库会直接使用完整的高校-校区表结构。已有本地数据库需要按顺序执行一次以下脚本，将原有学校记录迁移为“高校 + 校区”数据，同时保留既有 `school_id` 关联：
+
+```powershell
+docker compose cp docs/db-migrations/003_university_campus_scope.sql mysql:/tmp/003_university_campus_scope.sql
+docker compose exec -T mysql sh -lc "mysql -uroot -pcampuscircle_dev_pwd campuscircle < /tmp/003_university_campus_scope.sql"
+```
+
+执行后可重新导入 `src/main/resources/db/data.sql`，获得内置的多校区示例数据。
+
+若本地数据库已经运行过旧版本，还需要执行一次首次昵称确认迁移。已有账号会自动标记为已确认昵称；只有迁移后新注册的账号才会在首次登录时进入昵称确认页：
+
+```powershell
+docker compose cp docs/db-migrations/004_nickname_onboarding.sql mysql:/tmp/004_nickname_onboarding.sql
+docker compose exec -T mysql sh -lc "mysql -uroot -pcampuscircle_dev_pwd campuscircle < /tmp/004_nickname_onboarding.sql"
+```
+
+### Elasticsearch
 
 ```powershell
 docker compose --profile search up -d elasticsearch
-curl http://localhost:9200
 ```
 
-当前版本保留 SQL 关键词检索作为稳定实现，`CAMPUSCIRCLE_SEARCH_ENABLED` 默认值为 `false`。后续接入帖子
-向量化、索引消费者和 RRF 混合检索后，再将其打开；Elasticsearch 或 Embedding 不可用时，问答链路应回退到 SQL 检索。
+Elasticsearch 已接入异步索引、关键词检索、向量检索与 RRF 融合排序。MySQL 始终是事实源：ES 仅保存检索投影，最终候选帖子会按排序回查 MySQL；当 ES 或 Embedding 服务不可用时，系统自动降级到 SQL 关键词检索。
 
-## Test
+启用混合检索前，需要先启动 Elasticsearch，并在本地 `.env` 中设置 `CAMPUSCIRCLE_SEARCH_ENABLED=true`。本地链路验证可使用 `CAMPUSCIRCLE_SEARCH_EMBEDDING_PROVIDER=mock`；真实语义检索需要配置 OpenAI-compatible Embedding 服务。首次开启时，管理员可调用 `POST /api/admin/search/posts/reindex` 重建已有帖子索引。详细配置、重建和评测步骤见 [RAG v1 混合检索设计](docs/rag-v1-hybrid-retrieval.md)。
 
-测试环境使用 H2 内存数据库，不依赖本地 MySQL、Redis 或 RocketMQ。
-
-Linux/macOS:
-
-```bash
-./mvnw test
-```
-
-Windows PowerShell:
+## 测试
 
 ```powershell
 .\mvnw.cmd test
+
+Set-Location frontend
+npm.cmd run lint
+npm.cmd run build
 ```
 
-当前集成测试覆盖：
+接口详情见 [docs/API.md](docs/API.md)，前端请求约定见 [docs/frontend-api-contract.md](docs/frontend-api-contract.md)。完整产品链路、权限边界和验收范围见 [docs/product-closure-audit.md](docs/product-closure-audit.md)。
 
-- Spring Boot 上下文启动
-- 用户注册、登录和重复注册
-- 学校检索、附近学校查询和附近学校帖子 Feed
-- Feed 游标编解码、游标分页及跨页数据去重
-- 分类查询、发帖、评论创建和评论查询
-- 点赞、重复点赞、取消点赞和重复取消点赞
-- 通知查询、未读数统计
-- Redis 读取或写入异常时的数据库降级
-- AI 模型客户端装配、结构化请求和校园范围引用隔离
-- 未登录、非法分页、普通用户访问管理接口等边界场景
+旧版本本地数据库请按“已有数据库升级”章节顺序执行对应迁移；新建数据库不需要额外操作。

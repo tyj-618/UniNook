@@ -7,3 +7,7 @@ campuscircle:
   rocketmq:
     comment-topic: ${CAMPUSCIRCLE_COMMENT_TOPIC:campuscircle-comment-event}
     like-topic: ${CAMPUSCIRCLE_LIKE_TOPIC:campuscircle-like-event}
+    comment-like-topic: ${CAMPUSCIRCLE_COMMENT_LIKE_TOPIC:campuscircle-comment-like-event}
+    question-topic: ${CAMPUSCIRCLE_QUESTION_TOPIC:campuscircle-question-event}
+    post-search-index-topic: ${CAMPUSCIRCLE_POST_SEARCH_INDEX_TOPIC:campuscircle-post-search-index-event}
+    outbox-dispatch-interval-millis: ${CAMPUSCIRCLE_OUTBOX_DISPATCH_INTERVAL_MILLIS:1000}
