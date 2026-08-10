@@ -1,6 +1,6 @@
 # API Reference
 
-本文档列出 CampusCircle 的核心 REST API。接口统一返回：
+本文档列出 UniNook 的核心 REST API。接口统一返回：
 
 ```json
 {

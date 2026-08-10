@@ -132,7 +132,7 @@ watch(() => route.fullPath, () => void loadProfile(), { immediate: true })
             <button v-if="isOwnProfile" class="profile-school-change" type="button" title="切换学校或校区" @click="openSchoolChange"><School :size="16" />切换校园校区</button>
           </div>
           <p v-if="profile.bio" class="profile-bio">{{ profile.bio }}</p>
-          <p class="profile-joined"><CalendarDays :size="15" />加入 CampusCircle 于 {{ formatCompactDate(profile.createdAt) }}</p>
+          <p class="profile-joined"><CalendarDays :size="15" />加入 UniNook 于 {{ formatCompactDate(profile.createdAt) }}</p>
         </div>
       </header>
 

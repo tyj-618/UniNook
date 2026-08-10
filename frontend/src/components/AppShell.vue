@@ -39,9 +39,9 @@ function closeMobileNavigation(): void {
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <RouterLink class="brand" :to="feedTarget" aria-label="CampusCircle 首页">
-        <span class="brand-mark">C</span>
-        <span>CampusCircle</span>
+      <RouterLink class="brand" :to="feedTarget" aria-label="UniNook 首页">
+        <span class="brand-mark">U</span>
+        <span>UniNook</span>
       </RouterLink>
       <div class="topbar-actions">
         <button

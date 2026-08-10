@@ -38,8 +38,8 @@ async function handleSubmit(): Promise<void> {
   <main class="auth-page">
     <section class="auth-panel">
       <RouterLink class="brand" to="/login">
-        <span class="brand-mark">C</span>
-        <span>CampusCircle</span>
+        <span class="brand-mark">U</span>
+        <span>UniNook</span>
       </RouterLink>
       <div class="auth-intro">
         <p class="eyebrow">WELCOME TO THE CIRCLE</p>

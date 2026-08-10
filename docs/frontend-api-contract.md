@@ -1,4 +1,4 @@
-# CampusCircle 前端接口契约
+# UniNook 前端接口契约
 
 本文档记录前端第一阶段与 Spring Boot 后端之间的约定，作为前端实现和项目理解的共同入口。
 
