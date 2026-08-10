@@ -65,6 +65,12 @@
 - 最小管理台（独立管理员入口，后端接口已就绪）
 - 前端体验打磨（评论定位平滑滚动、自有 UI 设计语言）
 
+## 截图
+
+| Feed | 帖子详情与问题追踪 | 候选答复 | AI 校园助手 |
+|:---:|:---:|:---:|:---:|
+| ![](docs/screenshots/01-feed.png) | ![](docs/screenshots/02-post-detail.png) | ![](docs/screenshots/03-answers.png) | ![](docs/screenshots/04-assistant.png) |
+
 ## 架构
 
 ```mermaid
