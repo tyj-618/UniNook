@@ -19,6 +19,12 @@ public record QuestionLifecycleEvent(
                 questionId, answererId, postId, commentId, preview, List.of(askerId));
     }
 
+    public static QuestionLifecycleEvent answerAccepted(Long questionId, Long askerId, Long postId, Long commentId,
+                                                        String preview, List<Long> subscriberIds) {
+        return new QuestionLifecycleEvent(UUID.randomUUID().toString(), QuestionLifecycleEventType.ANSWER_ACCEPTED,
+                questionId, askerId, postId, commentId, preview, List.copyOf(subscriberIds));
+    }
+
     public static QuestionLifecycleEvent completed(Long questionId, Long askerId, Long postId, Long commentId,
                                                    String preview, List<Long> subscriberIds) {
         return new QuestionLifecycleEvent(UUID.randomUUID().toString(), QuestionLifecycleEventType.COMPLETED,

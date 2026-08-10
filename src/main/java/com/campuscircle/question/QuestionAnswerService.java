@@ -97,6 +97,10 @@ public class QuestionAnswerService {
                 || questionAnswerMapper.accept(questionId, answerId, currentUserId) == 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "候选答复状态已变化，请刷新后重试");
         }
+        domainEventPublisher.publishQuestionLifecycle(QuestionLifecycleEvent.answerAccepted(
+                questionId, currentUserId, answer.postId(), answer.commentId(), answer.content(),
+                questionMapper.findSubscriberIds(questionId)
+        ));
         return findResponse(questionId, currentUserId);
     }
 

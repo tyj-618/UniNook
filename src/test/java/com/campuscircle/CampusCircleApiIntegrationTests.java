@@ -665,6 +665,11 @@ class CampusCircleApiIntegrationTests {
         assertThat(acceptedFirst.at("/data/approvedAnswerCount").asLong()).isEqualTo(1);
         assertThat(acceptedFirst.at("/data/approvedAnswers/0/id").asLong()).isEqualTo(answerId);
         assertThat(acceptedFirst.at("/data/approvedAnswers/0/commentId").asLong()).isEqualTo(candidateCommentId);
+        JsonNode subscriberNoticesAfterAcceptance = get("/api/notices", subscriberToken);
+        assertCode(subscriberNoticesAfterAcceptance, 0);
+        assertThat(subscriberNoticesAfterAcceptance.at("/data/total").asLong()).isEqualTo(1);
+        assertThat(subscriberNoticesAfterAcceptance.at("/data/records/0/type").asInt()).isEqualTo(9);
+        assertThat(subscriberNoticesAfterAcceptance.at("/data/records/0/questionId").asLong()).isEqualTo(questionId);
 
         JsonNode secondCandidateComment = post("/api/posts/" + postId + "/comments", subscriberToken, Map.of(
                 "content", "另一个可行地点是东南大学图书馆，暑期开放安排以当天公告为准。",

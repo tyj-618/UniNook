@@ -23,6 +23,7 @@ public class NoticeService {
     public static final int TYPE_QUESTION_COMPLETED = 6;
     public static final int TYPE_QUESTION_DELETED = 7;
     public static final int TYPE_QUESTION_REOPENED = 8;
+    public static final int TYPE_QUESTION_ANSWER_ACCEPTED = 9;
 
     private final CurrentUserService currentUserService;
     private final NoticeMapper noticeMapper;
@@ -101,6 +102,7 @@ public class NoticeService {
     private NoticeTemplate questionNoticeTemplate(QuestionLifecycleEventType type, String answerPreview) {
         return switch (type) {
             case CANDIDATE_SUBMITTED -> new NoticeTemplate(TYPE_QUESTION_ANSWER, "有人提交了候选答复：" + abbreviate(answerPreview, 48));
+            case ANSWER_ACCEPTED -> new NoticeTemplate(TYPE_QUESTION_ANSWER_ACCEPTED, "你订阅的问题有答复被通过：" + abbreviate(answerPreview, 48));
             case COMPLETED -> new NoticeTemplate(TYPE_QUESTION_COMPLETED, "你订阅的问题已结束：" + abbreviate(answerPreview, 48));
             case REOPENED -> new NoticeTemplate(TYPE_QUESTION_REOPENED, "你订阅的问题已重新开启，正在继续收集答复");
             case DELETED -> new NoticeTemplate(TYPE_QUESTION_DELETED, "问题发起者已删除该问题追踪");
