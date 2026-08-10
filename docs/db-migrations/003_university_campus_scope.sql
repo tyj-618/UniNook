@@ -1,4 +1,4 @@
--- CampusCircle 高校-校区模型升级（MySQL 8）
+-- UniNook 高校-校区模型升级（MySQL 8）
 -- 适用于已经运行过早期 school_id 版本的本地或测试数据库。
 -- 执行前请先备份数据库；新建数据库无需单独执行，本变更已包含在 schema.sql 中。
 

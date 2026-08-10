@@ -1,0 +1,36 @@
+package com.uninook.notice;
+
+import com.uninook.post.PostAuthorResponse;
+
+import java.time.LocalDateTime;
+
+public record NoticeResponse(
+        Long id,
+        Integer type,
+        String content,
+        Integer readStatus,
+        PostAuthorResponse sender,
+        Long postId,
+        Long commentId,
+        Long questionId,
+        boolean targetDeleted,
+        String targetDeletedMessage,
+        LocalDateTime createdAt
+) {
+
+    public static NoticeResponse from(NoticeItem item) {
+        return new NoticeResponse(
+                item.id(),
+                item.type(),
+                item.content(),
+                item.readStatus(),
+                new PostAuthorResponse(item.senderId(), item.senderNickname(), item.senderAvatarUrl()),
+                item.postId(),
+                item.commentId(),
+                item.questionId(),
+                item.targetDeleted(),
+                item.targetDeletedMessage(),
+                item.createdAt()
+        );
+    }
+}

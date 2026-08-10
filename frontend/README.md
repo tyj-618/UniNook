@@ -1,6 +1,6 @@
-# CampusCircle Frontend
+# UniNook Frontend
 
-CampusCircle 的用户端采用 Vue 3、TypeScript、Vite、Vue Router 和 Axios 实现。当前第一阶段已接入登录、注册、登录态恢复，以及按距离范围查看附近学校帖子的 Feed。
+UniNook 的用户端采用 Vue 3、TypeScript、Vite、Vue Router 和 Axios 实现。当前已接入登录、注册、登录态恢复，以及按距离范围查看附近学校帖子的 Feed。
 
 ## 本地启动
 

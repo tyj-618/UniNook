@@ -1,4 +1,4 @@
--- Apply once to an existing CampusCircle database.
+-- Apply once to an existing UniNook database.
 ALTER TABLE `comment`
     ADD COLUMN author_school_id BIGINT NULL DEFAULT NULL COMMENT '评论发表时的学校ID快照' AFTER user_id,
     ADD COLUMN author_school_name VARCHAR(64) NULL DEFAULT NULL COMMENT '评论发表时的学校名称快照' AFTER author_school_id;

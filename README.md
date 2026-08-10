@@ -49,7 +49,7 @@ flowchart LR
 ## 项目结构
 
 ```text
-src/main/java/com/campuscircle
+src/main/java/com/uninook
 ├── ai          AI 问答、检索、Prompt 与模型客户端
 ├── auth        会话、认证与当前用户识别
 ├── event       领域事件、Outbox、RocketMQ 投递与消费
@@ -68,6 +68,7 @@ frontend/
 ## 设计文档
 
 - [后续开发路线图](docs/development-roadmap.md)
+- [开发与发布规范](docs/development-workflow.md)
 - [问题追踪设计与开发路线](docs/question-tracking-design.md)
 - [RAG v1 混合检索设计](docs/rag-v1-hybrid-retrieval.md)
 - [产品闭环审查记录](docs/product-closure-audit.md)

@@ -2,7 +2,7 @@
 
 ## 1. Scope
 
-CampusCircle answers questions only with posts that the current user is allowed to view. The retrieval layer never accepts a school scope from the browser as a trusted value.
+UniNook answers questions only with posts that the current user is allowed to view. The retrieval layer never accepts a school scope from the browser as a trusted value.
 
 The request path is:
 
@@ -64,7 +64,7 @@ The two result lists are fused with Reciprocal Rank Fusion:
 score(post) += 1 / (k + rank)
 ```
 
-where `k` defaults to `60` and rank starts from `1`. RRF combines rank positions rather than raw BM25 and vector scores, which avoids comparing incomparable score scales. After fusion, CampusCircle reloads the chosen post IDs from MySQL in fused order and removes any no-longer-normal post.
+where `k` defaults to `60` and rank starts from `1`. RRF combines rank positions rather than raw BM25 and vector scores, which avoids comparing incomparable score scales. After fusion, UniNook reloads the chosen post IDs from MySQL in fused order and removes any no-longer-normal post.
 
 ## 5. Local setup
 
@@ -121,7 +121,7 @@ curl http://localhost:9200/campuscircle-posts/_mapping
 - Embedding unavailable or invalid: the same SQL fallback applies.
 - A post is deleted or hidden before an index event is consumed: reconciliation deletes its document.
 - A retrieved Elasticsearch document is stale: MySQL reloading removes it from the final context.
-- The generation model fails: CampusCircle returns a controlled failure result rather than inventing an answer.
+- The generation model fails: UniNook returns a controlled failure result rather than inventing an answer.
 
 ## 8. Evaluation checklist
 

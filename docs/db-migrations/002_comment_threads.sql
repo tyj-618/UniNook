@@ -1,4 +1,4 @@
--- Apply once to an existing CampusCircle database before deploying comment replies.
+-- Apply once to an existing UniNook database before deploying comment replies.
 ALTER TABLE `comment`
     ADD COLUMN root_comment_id BIGINT NULL DEFAULT NULL COMMENT '顶级评论ID，顶级评论为空' AFTER user_id,
     ADD COLUMN parent_comment_id BIGINT NULL DEFAULT NULL COMMENT '直接回复的评论ID' AFTER root_comment_id,

@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.tyj</groupId>
-    <artifactId>CampusCircle</artifactId>
+    <artifactId>uninook</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>CampusCircle</name>
-    <description>CampusCircle</description>
+    <name>UniNook</name>
+    <description>UniNook campus community and intelligent assistant</description>
     <url/>
     <licenses>
         <license/>

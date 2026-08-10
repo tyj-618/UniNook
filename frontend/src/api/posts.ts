@@ -71,7 +71,7 @@ export async function createPostComment(
     { content, parentCommentId, answerQuestionId },
     {
       params: { radiusKm },
-      headers: { 'X-CampusCircle-User-Id': String(clientUserId) },
+      headers: { 'X-UniNook-User-Id': String(clientUserId) },
     },
   )
   return response.data.data!
