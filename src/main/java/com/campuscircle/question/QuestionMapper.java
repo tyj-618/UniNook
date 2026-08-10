@@ -116,6 +116,16 @@ public interface QuestionMapper extends BaseMapper<QuestionEntity> {
     @Select("SELECT user_id FROM question_subscription WHERE question_id = #{questionId}")
     List<Long> findSubscriberIds(@Param("questionId") Long questionId);
 
+    @Select("""
+            SELECT q.id AS questionId, q.source_type AS sourceType,
+                   CASE WHEN q.source_type = 'COMMENT' THEN q.source_id ELSE NULL END AS sourceCommentId
+            FROM question q
+            LEFT JOIN `comment` c ON q.source_type = 'COMMENT' AND c.id = q.source_id
+            WHERE (q.source_type = 'POST' AND q.source_id = #{postId})
+               OR (q.source_type = 'COMMENT' AND c.post_id = #{postId})
+            """)
+    List<QuestionSourceCleanupItem> findByPostId(@Param("postId") Long postId);
+
     @Delete("DELETE FROM question_subscription WHERE question_id = #{questionId}")
     int deleteSubscriptionsByQuestionId(@Param("questionId") Long questionId);
 

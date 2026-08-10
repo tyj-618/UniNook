@@ -8,6 +8,7 @@ import com.campuscircle.common.PageResponse;
 import com.campuscircle.exception.BusinessException;
 import com.campuscircle.event.DomainEventPublisher;
 import com.campuscircle.event.PostSearchIndexEvent;
+import com.campuscircle.question.QuestionSourceCleanupService;
 import com.campuscircle.school.CampusScope;
 import com.campuscircle.school.SchoolService;
 import com.campuscircle.user.UserProfile;
@@ -28,10 +29,12 @@ public class PostService {
     private final ViewCountService viewCountService;
     private final AfterCommitExecutor afterCommitExecutor;
     private final DomainEventPublisher domainEventPublisher;
+    private final QuestionSourceCleanupService questionSourceCleanupService;
 
     public PostService(CurrentUserService currentUserService, PostMapper postMapper, UserMapper userMapper,
                        SchoolService schoolService, HotPostRankStore hotPostRankStore, ViewCountService viewCountService,
-                       AfterCommitExecutor afterCommitExecutor, DomainEventPublisher domainEventPublisher) {
+                       AfterCommitExecutor afterCommitExecutor, DomainEventPublisher domainEventPublisher,
+                       QuestionSourceCleanupService questionSourceCleanupService) {
         this.currentUserService = currentUserService;
         this.postMapper = postMapper;
         this.userMapper = userMapper;
@@ -40,6 +43,7 @@ public class PostService {
         this.viewCountService = viewCountService;
         this.afterCommitExecutor = afterCommitExecutor;
         this.domainEventPublisher = domainEventPublisher;
+        this.questionSourceCleanupService = questionSourceCleanupService;
     }
 
     @Transactional
@@ -171,6 +175,7 @@ public class PostService {
         PostDetail postDetail = findNormalPost(postId);
         ensureCanManagePost(currentUserId, postDetail.userId());
         postMapper.softDeletePost(postId);
+        questionSourceCleanupService.deleteByPostId(postId, currentUserId);
         afterCommitExecutor.execute(() -> hotPostRankStore.removePost(postId, postDetail.categoryId()));
         afterCommitExecutor.execute(() -> domainEventPublisher.publishPostSearchIndex(PostSearchIndexEvent.forPost(postId)));
     }

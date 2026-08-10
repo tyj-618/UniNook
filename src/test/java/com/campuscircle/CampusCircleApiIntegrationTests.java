@@ -760,10 +760,22 @@ class CampusCircleApiIntegrationTests {
         assertThat(commentQuestionSummaries.at("/data/" + commentId + "/sourcePostId").asLong()).isEqualTo(postId);
         assertThat(commentQuestionSummaries.at("/data/" + candidateCommentId).isMissingNode()).isTrue();
         assertCode(delete("/api/questions/" + questionId, outsiderToken), 40300);
-        assertCode(delete("/api/questions/" + questionId, askerToken), 0);
+        assertCode(delete("/api/posts/" + postId, askerToken), 0);
+        assertCode(get("/api/posts/" + postId, askerToken), 40400);
+        assertCode(get("/api/questions/" + questionId, subscriberToken), 40400);
+        assertCode(get("/api/questions/" + commentQuestion.at("/data/id").asLong(), subscriberToken), 40400);
         JsonNode removedSubscriptions = get("/api/users/me/questions?role=SUBSCRIBED", subscriberToken);
         assertCode(removedSubscriptions, 0);
         assertThat(removedSubscriptions.at("/data/total").asLong()).isZero();
+        JsonNode removedOutsiderSubscriptions = get("/api/users/me/questions?role=SUBSCRIBED", outsiderToken);
+        assertCode(removedOutsiderSubscriptions, 0);
+        assertThat(removedOutsiderSubscriptions.at("/data/total").asLong()).isZero();
+        JsonNode deletionNotices = get("/api/notices", subscriberToken);
+        assertCode(deletionNotices, 0);
+        assertThat(deletionNotices.at("/data/records")).anySatisfy(notice -> {
+            assertThat(notice.at("/type").asInt()).isEqualTo(7);
+            assertThat(notice.at("/questionId").asLong()).isEqualTo(questionId);
+        });
     }
 
     private void register(String username, String password, String nickname) throws Exception {
