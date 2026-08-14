@@ -127,6 +127,35 @@ class AiAssistantServiceTests {
     }
 
     @Test
+    void keepsTheOriginalTopicAfterTheSessionWindowTrimsEarlierFollowUps() throws Exception {
+        AiProperties smallWindowProperties = new AiProperties();
+        smallWindowProperties.setChatSessionMaxMessages(4);
+        AiAssistantService smallWindowService = new AiAssistantService(
+                currentUserService, userMapper, schoolService, postRetriever,
+                new PromptBuilder(), modelClient,
+                new AiRequestRateLimiter(smallWindowProperties, (userId, limit) -> true),
+                new InMemoryChatSessionStore(smallWindowProperties),
+                new SlidingWindowChatContextCompressor(smallWindowProperties),
+                agentOrchestrator(modelClient, smallWindowProperties), new InMemoryChatSessionLockManager());
+        when(postRetriever.retrieve(any())).thenReturn(List.of(new RetrievedPost(
+                202L, "九龙湖自习室开放", "工作日开放至 23:00，周末开放至 22:00。", "东南大学", null)));
+
+        smallWindowService.stream("Bearer token", new AiAssistantRequest("九龙湖校区自习室开放吗？",
+                CampusScope.CAMPUS, null, "trimmed-follow-up"), chunk -> { });
+        smallWindowService.stream("Bearer token", new AiAssistantRequest("工作日呢？",
+                CampusScope.CAMPUS, null, "trimmed-follow-up"), chunk -> { });
+        smallWindowService.stream("Bearer token", new AiAssistantRequest("周末呢？",
+                CampusScope.CAMPUS, null, "trimmed-follow-up"), chunk -> { });
+        smallWindowService.stream("Bearer token", new AiAssistantRequest("工作日呢？",
+                CampusScope.CAMPUS, null, "trimmed-follow-up"), chunk -> { });
+
+        ArgumentCaptor<RetrievalQuery> queries = ArgumentCaptor.forClass(RetrievalQuery.class);
+        verify(postRetriever, org.mockito.Mockito.times(4)).retrieve(queries.capture());
+        assertThat(queries.getAllValues().get(3).question())
+                .isEqualTo("九龙湖校区自习室开放吗？ 工作日呢？");
+    }
+
+    @Test
     void replacesUngroundedAnswersWithAnEvidenceMessageForBothResponseModes() throws Exception {
         when(postRetriever.retrieve(any())).thenReturn(List.of());
 

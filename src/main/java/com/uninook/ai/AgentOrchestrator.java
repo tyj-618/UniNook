@@ -21,11 +21,6 @@ public class AgentOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(AgentOrchestrator.class);
     private static final String SEARCH_POSTS_TOOL = "search_posts";
     private static final String PREPARE_POST_TOOL = "prepare_post";
-    private static final Pattern QUESTION_PATTERN = Pattern.compile("<question>\\s*(.*?)\\s*</question>", Pattern.DOTALL);
-    private static final Pattern STANDALONE_FOLLOW_UP_PATTERN = Pattern.compile(
-            "^(?:\\u5de5\\u4f5c\\u65e5|\\u5468\\u672b|\\u51e0\\u70b9|\\u54ea\\u91cc|\\u5730\\u70b9)(?:\\u5462|\\u554a|\\u5440)?$");
-    private static final Pattern SCHEDULE_FOLLOW_UP_PATTERN = Pattern.compile(
-            "^(?:(?:\\u5de5\\u4f5c\\u65e5|\\u5468\\u672b)(?:\\u5f00\\u653e)?(?:\\u5230)?\\u51e0\\u70b9|\\u5f00\\u653e\\u5230\\u51e0\\u70b9)(?:\\u5462|\\u554a|\\u5440)?$");
     private static final Pattern POST_TITLE_PATTERN = Pattern.compile("标题\\s*(?:是|为)?\\s*[“\\\"']?([^”\\\"'，。]+)");
     private static final Pattern POST_CONTENT_PATTERN = Pattern.compile("内容\\s*(?:是|为)?\\s*[“\\\"']?([^”\\\"'。]+)");
     private static final String REPETITION_MESSAGE = "这一步没有新信息，请换思路或给出当前最佳答案。";
@@ -220,7 +215,7 @@ public class AgentOrchestrator {
         List<String> userQuestions = messages.stream()
                 .filter(message -> message.role() == ChatMessage.Role.USER)
                 .map(ChatMessage::content)
-                .map(this::extractQuestion)
+                .map(ConversationContext::extractQuestion)
                 .filter(question -> !question.isBlank())
                 .toList();
         String latestQuestion = userQuestions.isEmpty()
@@ -244,7 +239,7 @@ public class AgentOrchestrator {
     private String findLatestTopicQuestion(List<String> userQuestions) {
         for (int index = userQuestions.size() - 2; index >= 0; index--) {
             String question = userQuestions.get(index);
-            if (!isContextualFollowUp(question)) {
+            if (!ConversationContext.isContextualFollowUp(question)) {
                 return question;
             }
         }
@@ -255,25 +250,14 @@ public class AgentOrchestrator {
         return messages.stream()
                 .filter(message -> message.role() == ChatMessage.Role.USER)
                 .map(ChatMessage::content)
-                .map(this::extractQuestion)
+                .map(ConversationContext::extractQuestion)
                 .filter(question -> !question.isBlank())
                 .reduce((ignored, latest) -> latest)
                 .orElse("");
     }
 
-    private String extractQuestion(String message) {
-        Matcher matcher = QUESTION_PATTERN.matcher(message);
-        return matcher.find() ? matcher.group(1).trim() : message.trim();
-    }
-
     private boolean isContextualFollowUp(String question) {
-        String normalized = question.replaceAll("[\\s\\p{Punct}\\x{FF0C}\\x{3002}\\x{FF1F}\\x{FF01}\\x{3001}]", "");
-        return normalized.startsWith("那") || normalized.startsWith("它")
-                || normalized.startsWith("具体") || normalized.startsWith("然后")
-                || normalized.startsWith("这个") || normalized.startsWith("这间")
-                || normalized.startsWith("这里") || normalized.startsWith("这样")
-                || STANDALONE_FOLLOW_UP_PATTERN.matcher(normalized).matches()
-                || SCHEDULE_FOLLOW_UP_PATTERN.matcher(normalized).matches();
+        return ConversationContext.isContextualFollowUp(question);
     }
 
     private boolean isExplicitPostPublicationRequest(String question) {
