@@ -109,6 +109,22 @@ class AiAssistantServiceTests {
                 .contains("图书馆几点开门");
     }
 
+    @Test
+    void replacesUngroundedAnswersWithAnEvidenceMessageForBothResponseModes() throws Exception {
+        when(postRetriever.retrieve(any())).thenReturn(List.of());
+
+        AiAssistantResponse response = service.ask("Bearer token",
+                new AiAssistantRequest("library closing time", CampusScope.CAMPUS, null, "evidence-1"));
+        List<String> chunks = new ArrayList<>();
+        AiAssistantResponse streamedResponse = service.stream("Bearer token",
+                new AiAssistantRequest("library closing time", CampusScope.CAMPUS, null, "evidence-2"), chunks::add);
+
+        assertThat(response.answer()).isEqualTo(AiAssistantService.INSUFFICIENT_EVIDENCE_MESSAGE);
+        assertThat(response.insufficientEvidence()).isTrue();
+        assertThat(streamedResponse.answer()).isEqualTo(AiAssistantService.INSUFFICIENT_EVIDENCE_MESSAGE);
+        assertThat(chunks).containsExactly(AiAssistantService.INSUFFICIENT_EVIDENCE_MESSAGE);
+    }
+
     private UserProfile userProfile() {
         return new UserProfile(7L, "student", "学生", 10L, 1L,
                 "示例大学", "示例校区", "示例城市", null, null, 0, 1,

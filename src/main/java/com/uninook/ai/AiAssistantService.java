@@ -20,6 +20,7 @@ import java.util.List;
 public class AiAssistantService {
 
     private static final Logger log = LoggerFactory.getLogger(AiAssistantService.class);
+    static final String INSUFFICIENT_EVIDENCE_MESSAGE = "当前范围内没有足够的帖子可作为可靠依据。";
     private final CurrentUserService currentUserService;
     private final UserMapper userMapper;
     private final SchoolService schoolService;
@@ -87,8 +88,9 @@ public class AiAssistantService {
         CampusScope scope = CampusScope.resolve(request.scope(), request.radiusKm());
         AgentResult result = agentOrchestrator.run(promptBuilder.buildAgent(request.question(), history).messages(),
                 new ToolExecutionContext(userId, user, scope));
+        String answer = groundedAnswer(result.answer(), result.references(), result.pendingConfirmation());
         AiAssistantResponse response = new AiAssistantResponse(
-                result.answer(), result.references(),
+                answer, result.references(),
                 !result.pendingConfirmation() && result.references().isEmpty(), requestId);
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
         log.info("assistant requestId={} stage=response references={} pendingConfirmation={}", requestId,
@@ -121,7 +123,10 @@ public class AiAssistantService {
                 new ToolExecutionContext(userId, user, scope));
 
         String answer;
-        if (plan.requiresModelStream()) {
+        if (!plan.pendingConfirmation() && plan.references().isEmpty()) {
+            answer = INSUFFICIENT_EVIDENCE_MESSAGE;
+            chunkConsumer.accept(answer);
+        } else if (plan.requiresModelStream()) {
             StringBuilder generated = new StringBuilder();
             long streamStartedAt = System.currentTimeMillis();
             try {
@@ -167,5 +172,12 @@ public class AiAssistantService {
         updated.add(new ChatMessage(ChatMessage.Role.USER, question));
         updated.add(new ChatMessage(ChatMessage.Role.ASSISTANT, answer));
         chatSessionStore.save(userId, sessionId, chatContextCompressor.compress(updated));
+    }
+
+    private String groundedAnswer(String answer, List<AiPostReference> references, boolean pendingConfirmation) {
+        if (!pendingConfirmation && references.isEmpty()) {
+            return INSUFFICIENT_EVIDENCE_MESSAGE;
+        }
+        return answer;
     }
 }
