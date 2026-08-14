@@ -1,6 +1,6 @@
 import { apiClient, refreshAccessToken } from './client.ts'
 import { readAccessToken } from '../auth/session.ts'
-import type { AiAssistantResponse, ApiResponse, CampusScope } from '../types/api.ts'
+import type { AiAssistantResponse, ApiResponse, CampusScope, CreatePostResponse } from '../types/api.ts'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -12,6 +12,15 @@ export interface AssistantStreamHandlers {
 export async function askAssistant(question: string, scope: CampusScope): Promise<AiAssistantResponse> {
   const response = await apiClient.post<ApiResponse<AiAssistantResponse>>('/ai/assistant/ask', { question, scope })
   return response.data.data
+}
+
+export async function confirmPendingPost(actionId: string, categoryId: number): Promise<CreatePostResponse> {
+  const response = await apiClient.post<ApiResponse<CreatePostResponse>>(`/ai/pending-actions/${actionId}/confirm`, { categoryId })
+  return response.data.data!
+}
+
+export async function cancelPendingAction(actionId: string): Promise<void> {
+  await apiClient.delete<ApiResponse<boolean>>(`/ai/pending-actions/${actionId}`)
 }
 
 export async function streamAssistant(

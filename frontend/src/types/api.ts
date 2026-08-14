@@ -264,9 +264,18 @@ export interface AiPostReference {
   excerpt: string
 }
 
+export interface PendingPostAction {
+  actionId: string
+  type: 'CREATE_POST'
+  title: string
+  content: string
+  expiresAt: string
+}
+
 export interface AiAssistantResponse {
   answer: string
   references: AiPostReference[]
   insufficientEvidence: boolean
   requestId: string
+  pendingAction: PendingPostAction | null
 }
