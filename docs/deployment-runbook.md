@@ -30,13 +30,19 @@ curl --fail http://127.0.0.1:8080/actuator/health
 当前校区目录迁移：
 
 ```bash
-docker compose exec -T mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle' < docs/db-migrations/012_seed_campus_catalog.sql
+docker compose exec -T mysql sh -lc 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle' < docs/db-migrations/012_seed_campus_catalog.sql
 ```
 
 执行后可用下列命令确认南京市已返回五个校区：
 
 ```bash
 docker compose exec mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle -e "SELECT name, campus_name FROM school WHERE province=\"江苏省\" AND city=\"南京市\" AND status=0 ORDER BY name, campus_name;"'
+```
+
+如果曾在未指定客户端字符集的情况下执行过 `012`，并且页面出现乱码，执行一次下列修复迁移。它不会删除数据，只会停用编码损坏的目录行并恢复标准目录：
+
+```bash
+docker compose exec -T mysql sh -lc 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle' < docs/db-migrations/013_repair_campus_catalog_encoding.sql
 ```
 
 初次启动 Elasticsearch 可能需要几十秒。若首个版本暂不启用混合检索，可以移除 `--profile search`，并保持 `CAMPUSCIRCLE_SEARCH_ENABLED=false`。

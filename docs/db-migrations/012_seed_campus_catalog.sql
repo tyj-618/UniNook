@@ -2,6 +2,9 @@
 -- multi-campus records were added. This migration is idempotent and does not
 -- remove or overwrite user, post, comment, or existing campus records.
 
+-- Keep the connection charset explicit when this file is piped to mysql.
+SET NAMES utf8mb4;
+
 INSERT INTO university (id, name, province, city, status)
 VALUES
     (1, '南京大学', '江苏省', '南京市', 0),
