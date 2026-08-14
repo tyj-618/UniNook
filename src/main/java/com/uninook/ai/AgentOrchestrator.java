@@ -223,10 +223,10 @@ public class AgentOrchestrator {
     }
 
     private boolean isContextualFollowUp(String question) {
-        return question.startsWith("那") || question.startsWith("这") || question.startsWith("它")
+        return question.startsWith("那") || question.startsWith("它")
                 || question.startsWith("具体") || question.startsWith("然后")
-                || question.startsWith("周末") || question.startsWith("工作日")
-                || question.startsWith("几点") || question.startsWith("何时");
+                || question.startsWith("这个") || question.startsWith("这间")
+                || question.startsWith("这里") || question.startsWith("这样");
     }
 
     private String escapeJson(String value) {

@@ -96,6 +96,22 @@ class AgentOrchestratorTests {
     }
 
     @Test
+    void keepsAnIndependentQuestionSeparateFromThePreviousTopic() {
+        CapturingReadTool tool = new CapturingReadTool("search_posts");
+        modelClient.scriptToolResponses(
+                toolCall("search_posts", "{\"keyword\":\"周末图书馆几点关门？\"}"),
+                finalAnswer());
+        List<ChatMessage> conversation = List.of(
+                new ChatMessage(ChatMessage.Role.USER, "九龙湖校区自习室开放吗？"),
+                new ChatMessage(ChatMessage.Role.ASSISTANT, "自习室已开放。"),
+                new ChatMessage(ChatMessage.Role.USER, "<question>周末图书馆几点关门？</question>"));
+
+        orchestrator(tool).run(conversation, context);
+
+        assertThat(tool.arguments.get("keyword")).isEqualTo("周末图书馆几点关门？");
+    }
+
+    @Test
     void overridesForgedIdentityParametersWithServerContext() {
         CapturingReadTool tool = new CapturingReadTool("search_posts");
         modelClient.scriptToolResponses(
