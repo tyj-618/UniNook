@@ -6,6 +6,7 @@ public record AiAssistantResponse(
         String answer,
         List<AiPostReference> references,
         boolean insufficientEvidence,
-        String requestId
+        String requestId,
+        PendingActionSummary pendingAction
 ) {
 }

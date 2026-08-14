@@ -72,6 +72,7 @@ campuscircle:
     chat-session-ttl-seconds: ${CAMPUSCIRCLE_AI_CHAT_SESSION_TTL_SECONDS:1800}
     chat-session-max-messages: ${CAMPUSCIRCLE_AI_CHAT_SESSION_MAX_MESSAGES:12}
     chat-session-lock-ttl-seconds: ${CAMPUSCIRCLE_AI_CHAT_SESSION_LOCK_TTL_SECONDS:300}
+    pending-action-ttl-seconds: ${CAMPUSCIRCLE_AI_PENDING_ACTION_TTL_SECONDS:600}
     agent-max-steps: ${CAMPUSCIRCLE_AI_AGENT_MAX_STEPS:6}
     agent-max-validation-retries: ${CAMPUSCIRCLE_AI_AGENT_MAX_VALIDATION_RETRIES:3}
     structured-output: ${CAMPUSCIRCLE_AI_STRUCTURED_OUTPUT:false}

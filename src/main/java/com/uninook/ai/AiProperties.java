@@ -17,6 +17,7 @@ public class AiProperties {
     private int chatSessionTtlSeconds = 1800;
     private int chatSessionMaxMessages = 12;
     private int chatSessionLockTtlSeconds = 300;
+    private int pendingActionTtlSeconds = 600;
     private int agentMaxSteps = 6;
     private int agentMaxValidationRetries = 3;
     private boolean structuredOutput;
@@ -116,6 +117,14 @@ public class AiProperties {
 
     public void setChatSessionLockTtlSeconds(int chatSessionLockTtlSeconds) {
         this.chatSessionLockTtlSeconds = chatSessionLockTtlSeconds;
+    }
+
+    public int getPendingActionTtlSeconds() {
+        return pendingActionTtlSeconds;
+    }
+
+    public void setPendingActionTtlSeconds(int pendingActionTtlSeconds) {
+        this.pendingActionTtlSeconds = pendingActionTtlSeconds;
     }
 
     public int getAgentMaxSteps() {

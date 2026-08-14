@@ -23,7 +23,7 @@ public class ToolCallExecutor {
         if (tool.definition().operation() == ToolOperation.WRITE) {
             Map<String, Object> safeArguments = toolSecurityValidator.validateAndSecure(
                     tool.definition(), toolCall.argumentsJson(), context);
-            return ToolExecutionResult.pendingConfirmation(tool.pendingConfirmationMessage(context, safeArguments));
+            return tool.preparePendingConfirmation(context, safeArguments);
         }
         Map<String, Object> safeArguments = toolSecurityValidator.validateAndSecure(
                 tool.definition(), toolCall.argumentsJson(), context);

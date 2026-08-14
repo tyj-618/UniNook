@@ -6,7 +6,8 @@ import java.util.List;
  * Result of the tool-planning stage before the assistant sends its final response.
  */
 public record AgentStreamingPlan(String immediateAnswer, List<ChatMessage> finalMessages,
-                                 List<AiPostReference> references, boolean pendingConfirmation) {
+                                 List<AiPostReference> references, boolean pendingConfirmation,
+                                 PendingActionSummary pendingAction) {
 
     public AgentStreamingPlan {
         finalMessages = finalMessages == null ? List.of() : List.copyOf(finalMessages);
@@ -18,10 +19,11 @@ public record AgentStreamingPlan(String immediateAnswer, List<ChatMessage> final
     }
 
     static AgentStreamingPlan stream(List<ChatMessage> finalMessages, List<AiPostReference> references) {
-        return new AgentStreamingPlan(null, finalMessages, references, false);
+        return new AgentStreamingPlan(null, finalMessages, references, false, null);
     }
 
     static AgentStreamingPlan immediate(AgentResult result) {
-        return new AgentStreamingPlan(result.answer(), List.of(), result.references(), result.pendingConfirmation());
+        return new AgentStreamingPlan(result.answer(), List.of(), result.references(), result.pendingConfirmation(),
+                result.pendingAction());
     }
 }

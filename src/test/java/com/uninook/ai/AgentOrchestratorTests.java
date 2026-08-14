@@ -190,7 +190,10 @@ class AgentOrchestratorTests {
 
     @Test
     void preparesPostDraftWithoutCallingTheBusinessWriteOperation() {
-        PreparePostTool postTool = new PreparePostTool();
+        AiProperties properties = new AiProperties();
+        InMemoryPendingActionStore pendingActionStore = new InMemoryPendingActionStore();
+        PendingActionService pendingActionService = new PendingActionService(pendingActionStore, properties);
+        PreparePostTool postTool = new PreparePostTool(pendingActionService);
         ToolCallExecutor executor = new ToolCallExecutor(new ToolRegistry(List.of(postTool)),
                 new ToolSecurityValidator(new ObjectMapper()));
 
@@ -199,6 +202,12 @@ class AgentOrchestratorTests {
 
         assertThat(result.pendingConfirmation()).isTrue();
         assertThat(result.content()).contains("Lost and found test", "Verification only", "确认前不会创建帖子");
+        assertThat(result.pendingAction()).isNotNull();
+        assertThat(pendingActionStore.load(context.userId(), result.pendingAction().actionId()))
+                .isPresent()
+                .get()
+                .extracting(PendingAction::title, PendingAction::content)
+                .containsExactly("Lost and found test", "Verification only");
     }
 
     private AgentOrchestrator orchestrator(AgentTool... tools) {

@@ -23,6 +23,12 @@ public class PreparePostTool implements AgentTool {
             ToolOperation.WRITE
     );
 
+    private final PendingActionService pendingActionService;
+
+    public PreparePostTool(PendingActionService pendingActionService) {
+        this.pendingActionService = pendingActionService;
+    }
+
     @Override
     public ToolDefinition definition() {
         return DEFINITION;
@@ -30,13 +36,15 @@ public class PreparePostTool implements AgentTool {
 
     @Override
     public ToolExecutionResult execute(ToolExecutionContext context, Map<String, Object> arguments) {
-        return ToolExecutionResult.pendingConfirmation(pendingConfirmationMessage(context, arguments));
+        return preparePendingConfirmation(context, arguments);
     }
 
     @Override
-    public String pendingConfirmationMessage(ToolExecutionContext context, Map<String, Object> arguments) {
-        String title = String.valueOf(arguments.get("title")).trim();
-        String content = String.valueOf(arguments.get("content")).trim();
-        return "待确认发布草稿：标题“%s”，内容“%s”。确认前不会创建帖子。".formatted(title, content);
+    public ToolExecutionResult preparePendingConfirmation(ToolExecutionContext context, Map<String, Object> arguments) {
+        PendingActionSummary pendingAction = pendingActionService.preparePostDraft(context, arguments);
+        return ToolExecutionResult.pendingConfirmation(
+                "待确认发布草稿：标题“%s”，内容“%s”。确认前不会创建帖子。"
+                        .formatted(pendingAction.title(), pendingAction.content()),
+                pendingAction);
     }
 }

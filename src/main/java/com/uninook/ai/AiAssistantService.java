@@ -91,7 +91,7 @@ public class AiAssistantService {
         String answer = groundedAnswer(result.answer(), result.references(), result.pendingConfirmation());
         AiAssistantResponse response = new AiAssistantResponse(
                 answer, result.references(),
-                !result.pendingConfirmation() && result.references().isEmpty(), requestId);
+                !result.pendingConfirmation() && result.references().isEmpty(), requestId, result.pendingAction());
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
         log.info("assistant requestId={} stage=response references={} pendingConfirmation={}", requestId,
                 response.references().size(), result.pendingConfirmation());
@@ -149,7 +149,8 @@ public class AiAssistantService {
         }
 
         AiAssistantResponse response = new AiAssistantResponse(
-                answer, plan.references(), !plan.pendingConfirmation() && plan.references().isEmpty(), requestId);
+                answer, plan.references(), !plan.pendingConfirmation() && plan.references().isEmpty(), requestId,
+                plan.pendingAction());
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
         log.info("assistant requestId={} stage=stream-response references={} pendingConfirmation={} modelStream={}",
                 requestId, response.references().size(), plan.pendingConfirmation(), plan.requiresModelStream());

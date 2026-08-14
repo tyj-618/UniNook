@@ -92,7 +92,7 @@ public class AgentOrchestrator {
                 log.info("assistant requestId={} stage=tool step={} tool={} status=pending-confirmation",
                         AiRequestContext.requestId(), step + 1, fallbackCall.name());
                 return new AgentLoopResult(
-                        AgentResult.pendingConfirmation(result.content(), null, references), messages, true);
+                        AgentResult.pendingConfirmation(result.content(), null, references, result.pendingAction()), messages, true);
             }
             long modelStartedAt = System.currentTimeMillis();
             AgentModelResponse modelResponse;
@@ -157,7 +157,8 @@ public class AgentOrchestrator {
                         log.info("assistant requestId={} stage=tool step={} tool={} status=pending-confirmation",
                                 AiRequestContext.requestId(), step + 1, toolCall.name());
                         return new AgentLoopResult(
-                                AgentResult.pendingConfirmation(result.content(), modelResponse.requestId(), references),
+                                AgentResult.pendingConfirmation(result.content(), modelResponse.requestId(), references,
+                                        result.pendingAction()),
                                 messages, executedTool);
                     }
                     log.info("assistant requestId={} stage=tool step={} tool={} status=completed references={}",
