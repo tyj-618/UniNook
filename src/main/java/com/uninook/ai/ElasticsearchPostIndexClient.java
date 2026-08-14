@@ -97,6 +97,10 @@ public class ElasticsearchPostIndexClient {
         return executeSearch(Map.of("size", limit, "_source", List.of("postId"), "knn", knn));
     }
 
+    public void ping() {
+        restClient.get().uri("/").retrieve().toBodilessEntity();
+    }
+
     private List<Long> executeSearch(Map<String, Object> body) {
         ensureIndex();
         JsonNode response = restClient.post()

@@ -7,18 +7,16 @@ import com.uninook.school.CampusScope;
 import com.uninook.school.SchoolService;
 import com.uninook.user.UserMapper;
 import com.uninook.user.UserProfile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 public class AiAssistantService {
 
+    private static final Logger log = LoggerFactory.getLogger(AiAssistantService.class);
     private static final int RETRIEVAL_LIMIT = 5;
     private final CurrentUserService currentUserService;
     private final UserMapper userMapper;
@@ -49,6 +47,17 @@ public class AiAssistantService {
     }
 
     public AiAssistantResponse ask(String authorization, AiAssistantRequest request) {
+        String requestId = AiRequestContext.begin(null);
+        try {
+            log.info("assistant requestId={} mode=agent sessionPresent={}", requestId,
+                    request.sessionId() != null && !request.sessionId().isBlank());
+            return askInternal(authorization, request, requestId);
+        } finally {
+            AiRequestContext.clear();
+        }
+    }
+
+    private AiAssistantResponse askInternal(String authorization, AiAssistantRequest request, String requestId) {
         Long userId = currentUserService.requireUserId(authorization);
         aiRequestRateLimiter.check(userId);
         UserProfile user = userMapper.findProfileById(userId)
@@ -62,13 +71,25 @@ public class AiAssistantService {
                 result.answer(),
                 result.references(),
                 !result.pendingConfirmation() && result.references().isEmpty(),
-                result.requestId() == null ? UUID.randomUUID().toString() : result.requestId());
+                requestId);
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
+        log.info("assistant requestId={} stage=response references={} pendingConfirmation={}", requestId,
+                response.references().size(), result.pendingConfirmation());
         return response;
     }
 
     public AiAssistantResponse stream(String authorization, AiAssistantRequest request,
                                       AiStreamChunkConsumer chunkConsumer) throws java.io.IOException {
+        String requestId = AiRequestContext.begin(null);
+        try {
+            return streamInternal(authorization, request, chunkConsumer, requestId);
+        } finally {
+            AiRequestContext.clear();
+        }
+    }
+
+    private AiAssistantResponse streamInternal(String authorization, AiAssistantRequest request,
+                                               AiStreamChunkConsumer chunkConsumer, String requestId) throws java.io.IOException {
         Long userId = currentUserService.requireUserId(authorization);
         aiRequestRateLimiter.check(userId);
         UserProfile user = userMapper.findProfileById(userId)
@@ -82,7 +103,7 @@ public class AiAssistantService {
         if (posts.isEmpty()) {
             String answer = "在当前查看范围内暂未找到相关校园帖子。";
             chunkConsumer.accept(answer);
-            AiAssistantResponse response = new AiAssistantResponse(answer, List.of(), true, UUID.randomUUID().toString());
+            AiAssistantResponse response = new AiAssistantResponse(answer, List.of(), true, requestId);
             saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
             return response;
         }
@@ -100,8 +121,9 @@ public class AiAssistantService {
                 .map(AiPostReference::from)
                 .toList();
         AiAssistantResponse response = new AiAssistantResponse(
-                answer.toString().trim(), references, references.isEmpty(), UUID.randomUUID().toString());
+                answer.toString().trim(), references, references.isEmpty(), requestId);
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
+        log.info("assistant requestId={} stage=stream-response references={}", requestId, references.size());
         return response;
     }
 

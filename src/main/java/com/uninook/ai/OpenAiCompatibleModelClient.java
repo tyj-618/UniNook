@@ -70,8 +70,8 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
                         .body(String.class);
 
                 AiModelResult result = parseResponse(parseProviderResponse(responseBody));
-                log.info("AI call succeeded: requestId={}, model={}, elapsedMs={}, inputTokens={}, outputTokens={}",
-                        result.requestId(), properties.getModel(), System.currentTimeMillis() - startedAt,
+                log.info("assistant requestId={} stage=llm mode=structured providerRequestId={} model={} elapsedMs={} inputTokens={} outputTokens={}",
+                        AiRequestContext.requestId(), result.requestId(), properties.getModel(), System.currentTimeMillis() - startedAt,
                         result.inputTokens(), result.outputTokens());
                 return result;
             } catch (RestClientResponseException exception) {
@@ -79,16 +79,17 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
                     backoff(attempt);
                     continue;
                 }
-                log.warn("AI call failed: model={}, status={}, elapsedMs={}", properties.getModel(),
-                        exception.getStatusCode().value(), System.currentTimeMillis() - startedAt);
+                log.warn("assistant requestId={} stage=llm mode=structured status=failed model={} httpStatus={} elapsedMs={}",
+                        AiRequestContext.requestId(), properties.getModel(), exception.getStatusCode().value(),
+                        System.currentTimeMillis() - startedAt);
                 throw unavailable();
             } catch (ResourceAccessException exception) {
                 if (attempt < properties.getMaxRetries()) {
                     backoff(attempt);
                     continue;
                 }
-                log.warn("AI call timed out or could not connect: model={}, elapsedMs={}", properties.getModel(),
-                        System.currentTimeMillis() - startedAt);
+                log.warn("assistant requestId={} stage=llm mode=structured status=unavailable model={} elapsedMs={}",
+                        AiRequestContext.requestId(), properties.getModel(), System.currentTimeMillis() - startedAt);
                 throw unavailable();
             }
         }
@@ -117,24 +118,26 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
                 String requestId = response.id() == null || response.id().isBlank() ? UUID.randomUUID().toString() : response.id();
                 Integer inputTokens = response.usage() == null ? null : response.usage().inputTokens();
                 Integer outputTokens = response.usage() == null ? null : response.usage().outputTokens();
-                log.info("AI text call succeeded: requestId={}, model={}, elapsedMs={}, inputTokens={}, outputTokens={}",
-                        requestId, properties.getModel(), System.currentTimeMillis() - startedAt, inputTokens, outputTokens);
+                log.info("assistant requestId={} stage=llm mode=text providerRequestId={} model={} elapsedMs={} inputTokens={} outputTokens={}",
+                        AiRequestContext.requestId(), requestId, properties.getModel(), System.currentTimeMillis() - startedAt,
+                        inputTokens, outputTokens);
                 return new AiTextResult(content, requestId, inputTokens, outputTokens);
             } catch (RestClientResponseException exception) {
                 if (isRetryable(exception) && attempt < properties.getMaxRetries()) {
                     backoff(attempt);
                     continue;
                 }
-                log.warn("AI text call failed: model={}, status={}, elapsedMs={}", properties.getModel(),
-                        exception.getStatusCode().value(), System.currentTimeMillis() - startedAt);
+                log.warn("assistant requestId={} stage=llm mode=text status=failed model={} httpStatus={} elapsedMs={}",
+                        AiRequestContext.requestId(), properties.getModel(), exception.getStatusCode().value(),
+                        System.currentTimeMillis() - startedAt);
                 throw unavailable();
             } catch (ResourceAccessException exception) {
                 if (attempt < properties.getMaxRetries()) {
                     backoff(attempt);
                     continue;
                 }
-                log.warn("AI text call timed out or could not connect: model={}, elapsedMs={}", properties.getModel(),
-                        System.currentTimeMillis() - startedAt);
+                log.warn("assistant requestId={} stage=llm mode=text status=unavailable model={} elapsedMs={}",
+                        AiRequestContext.requestId(), properties.getModel(), System.currentTimeMillis() - startedAt);
                 throw unavailable();
             }
         }
@@ -144,6 +147,9 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
     @Override
     public void generateStream(List<ChatMessage> messages, AiStreamChunkConsumer chunkConsumer) throws IOException {
         ensureConfigured();
+        long startedAt = System.currentTimeMillis();
+        log.info("assistant requestId={} stage=llm mode=stream status=started model={} inputMessages={}",
+                AiRequestContext.requestId(), properties.getModel(), messages.size());
         HttpURLConnection connection = null;
         try {
             URI endpoint = URI.create(stripTrailingSlash(properties.getBaseUrl()) + "/chat/completions");
@@ -173,6 +179,9 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
                     }
                     String data = line.substring("data:".length()).trim();
                     if ("[DONE]".equals(data)) {
+                        log.info("assistant requestId={} stage=llm mode=stream status=completed model={} elapsedMs={}",
+                                AiRequestContext.requestId(), properties.getModel(),
+                                System.currentTimeMillis() - startedAt);
                         return;
                     }
                     emitDeltaContent(data, chunkConsumer);
@@ -181,7 +190,8 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
         } catch (JsonProcessingException exception) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "模型服务流式返回格式异常");
         } catch (StreamHttpStatusException exception) {
-            log.warn("AI stream request failed: model={}, status={}", properties.getModel(), exception.status());
+            log.warn("assistant requestId={} stage=llm mode=stream status=failed model={} httpStatus={}",
+                    AiRequestContext.requestId(), properties.getModel(), exception.status());
             throw unavailable();
         } finally {
             if (connection != null) {
@@ -204,24 +214,26 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
                         .retrieve()
                         .body(String.class);
                 AgentModelResponse result = parseToolResponse(parseProviderResponse(responseBody));
-                log.info("AI tool call succeeded: requestId={}, model={}, elapsedMs={}",
-                        result.requestId(), properties.getModel(), System.currentTimeMillis() - startedAt);
+                log.info("assistant requestId={} stage=llm mode=tools providerRequestId={} model={} elapsedMs={} toolCalls={}",
+                        AiRequestContext.requestId(), result.requestId(), properties.getModel(),
+                        System.currentTimeMillis() - startedAt, result.toolCalls().size());
                 return result;
             } catch (RestClientResponseException exception) {
                 if (isRetryable(exception) && attempt < properties.getMaxRetries()) {
                     backoff(attempt);
                     continue;
                 }
-                log.warn("AI tool call failed: model={}, status={}, elapsedMs={}", properties.getModel(),
-                        exception.getStatusCode().value(), System.currentTimeMillis() - startedAt);
+                log.warn("assistant requestId={} stage=llm mode=tools status=failed model={} httpStatus={} elapsedMs={}",
+                        AiRequestContext.requestId(), properties.getModel(), exception.getStatusCode().value(),
+                        System.currentTimeMillis() - startedAt);
                 throw unavailable();
             } catch (ResourceAccessException exception) {
                 if (attempt < properties.getMaxRetries()) {
                     backoff(attempt);
                     continue;
                 }
-                log.warn("AI tool call timed out or could not connect: model={}, elapsedMs={}", properties.getModel(),
-                        System.currentTimeMillis() - startedAt);
+                log.warn("assistant requestId={} stage=llm mode=tools status=unavailable model={} elapsedMs={}",
+                        AiRequestContext.requestId(), properties.getModel(), System.currentTimeMillis() - startedAt);
                 throw unavailable();
             }
         }

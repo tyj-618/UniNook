@@ -1,0 +1,31 @@
+query,expectedPostId,answerPoint
+libraryhours,1001,library opening hours
+studyroom,1002,study room availability
+campuswifi,1003,wifi access
+shuttlebus,1004,shuttle schedule
+dormrepair,1005,dormitory repair
+medicalclinic,1006,clinic hours
+lostfound,1007,lost and found
+coursechange,1008,course change deadline
+examroom,1009,exam room lookup
+scholarship,1010,scholarship application
+internshipfair,1011,internship fair date
+gymaccess,1012,gym access rules
+swimmingpool,1013,pool opening status
+printingservice,1014,printing service
+mailroom,1015,mailroom location
+parkingpermit,1016,parking permit
+foodcourt,1017,food court hours
+clubsignup,1018,club signup
+graduationcheck,1019,graduation check
+libraryrenewal,1020,library renewal
+campusmap,1021,campus map
+classroombooking,1022,classroom booking
+researchgrant,1023,research grant
+studentcard,1024,student card
+tuitionpayment,1025,tuition payment
+exchangeprogram,1026,exchange program
+careercenter,1027,career center
+psychsupport,1028,psychological support
+emergencycontact,1029,emergency contact
+orientationday,1030,orientation day

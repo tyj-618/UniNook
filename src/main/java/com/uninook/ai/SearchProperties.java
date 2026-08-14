@@ -17,6 +17,8 @@ public class SearchProperties {
     private int embeddingTimeoutSeconds = 20;
     private int candidateLimit = 20;
     private int rrfRankConstant = 60;
+    private int healthCheckIntervalMilliseconds = 30_000;
+    private int healthFailureThreshold = 3;
 
     public boolean isEnabled() {
         return enabled;
@@ -112,5 +114,21 @@ public class SearchProperties {
 
     public void setRrfRankConstant(int rrfRankConstant) {
         this.rrfRankConstant = rrfRankConstant;
+    }
+
+    public int getHealthCheckIntervalMilliseconds() {
+        return healthCheckIntervalMilliseconds;
+    }
+
+    public void setHealthCheckIntervalMilliseconds(int healthCheckIntervalMilliseconds) {
+        this.healthCheckIntervalMilliseconds = healthCheckIntervalMilliseconds;
+    }
+
+    public int getHealthFailureThreshold() {
+        return healthFailureThreshold;
+    }
+
+    public void setHealthFailureThreshold(int healthFailureThreshold) {
+        this.healthFailureThreshold = healthFailureThreshold;
     }
 }

@@ -88,3 +88,5 @@ campuscircle:
     embedding-timeout-seconds: ${CAMPUSCIRCLE_SEARCH_EMBEDDING_TIMEOUT_SECONDS:20}
     candidate-limit: ${CAMPUSCIRCLE_SEARCH_CANDIDATE_LIMIT:20}
     rrf-rank-constant: ${CAMPUSCIRCLE_SEARCH_RRF_RANK_CONSTANT:60}
+    health-check-interval-milliseconds: ${CAMPUSCIRCLE_SEARCH_HEALTH_CHECK_INTERVAL_MILLISECONDS:30000}
+    health-failure-threshold: ${CAMPUSCIRCLE_SEARCH_HEALTH_FAILURE_THRESHOLD:3}

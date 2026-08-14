@@ -1,12 +1,16 @@
 package com.uninook.ai;
 
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
 public class PromptBuilder {
+
+    private static final Logger log = LoggerFactory.getLogger(PromptBuilder.class);
 
     private static final String SYSTEM_PROMPT = """
             You are the UniNook campus information assistant.
@@ -48,6 +52,8 @@ public class PromptBuilder {
             messages.addAll(history);
         }
         messages.add(new ChatMessage(ChatMessage.Role.USER, userPrompt));
+        log.info("assistant requestId={} stage=prompt mode=structured messages={} references={}",
+                AiRequestContext.requestId(), messages.size(), posts.size());
         return new AiModelRequest(SYSTEM_PROMPT, userPrompt, messages);
     }
 
@@ -71,6 +77,8 @@ public class PromptBuilder {
             messages.addAll(history);
         }
         messages.add(new ChatMessage(ChatMessage.Role.USER, userPrompt));
+        log.info("assistant requestId={} stage=prompt mode=stream messages={} references={}",
+                AiRequestContext.requestId(), messages.size(), posts.size());
         return new AiModelRequest(SYSTEM_PROMPT, userPrompt, messages);
     }
 
@@ -89,6 +97,8 @@ public class PromptBuilder {
             messages.addAll(history);
         }
         messages.add(new ChatMessage(ChatMessage.Role.USER, userPrompt));
+        log.info("assistant requestId={} stage=prompt mode=agent messages={} historyMessages={}",
+                AiRequestContext.requestId(), messages.size(), history == null ? 0 : history.size());
         return new AiModelRequest(AGENT_SYSTEM_PROMPT, userPrompt, messages);
     }
 

@@ -2,6 +2,8 @@ package com.uninook.ai;
 
 import com.uninook.common.ErrorCode;
 import com.uninook.exception.BusinessException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -10,6 +12,7 @@ import java.util.List;
 @Service
 public class AgentOrchestrator {
 
+    private static final Logger log = LoggerFactory.getLogger(AgentOrchestrator.class);
     private static final String REPETITION_MESSAGE = "这一步没有新信息，请换思路或给出当前最佳答案。";
     private static final String VALIDATION_PREFIX = "工具参数校验失败：";
     private final AiModelClient aiModelClient;
@@ -32,16 +35,22 @@ public class AgentOrchestrator {
         String previousFingerprint = null;
         int consecutiveRepeatCount = 0;
         boolean toolCallsDisabled = false;
+        log.info("assistant requestId={} stage=agent status=started messages={} tools={}",
+                AiRequestContext.requestId(), messages.size(), toolRegistry.definitions().size());
         for (int step = 0; step < properties.getAgentMaxSteps(); step++) {
             AgentModelResponse modelResponse = aiModelClient.generateWithTools(messages, toolRegistry.definitions());
             if (modelResponse.isFinalAnswer()) {
                 if (modelResponse.content().isBlank()) {
                     throw new BusinessException(ErrorCode.INTERNAL_ERROR, "智能问答服务未返回有效内容");
                 }
+                log.info("assistant requestId={} stage=agent status=final step={} references={}",
+                        AiRequestContext.requestId(), step + 1, references.size());
                 return AgentResult.answer(modelResponse.content(), modelResponse.requestId(), references);
             }
             messages.add(new ChatMessage(ChatMessage.Role.ASSISTANT, modelResponse.content(), null, modelResponse.toolCalls()));
             for (ToolCall toolCall : modelResponse.toolCalls()) {
+                log.info("assistant requestId={} stage=tool step={} tool={} status=requested",
+                        AiRequestContext.requestId(), step + 1, toolCall.name());
                 if (toolCallsDisabled) {
                     messages.add(new ChatMessage(ChatMessage.Role.TOOL,
                             "Tool calls are disabled after repeated validation failures. Please answer with the available information.",
@@ -63,8 +72,12 @@ public class AgentOrchestrator {
                     ToolExecutionResult result = toolCallExecutor.execute(toolCall, context);
                     references.addAll(result.references());
                     if (result.pendingConfirmation()) {
+                        log.info("assistant requestId={} stage=tool step={} tool={} status=pending-confirmation",
+                                AiRequestContext.requestId(), step + 1, toolCall.name());
                         return AgentResult.pendingConfirmation(result.content(), modelResponse.requestId(), references);
                     }
+                    log.info("assistant requestId={} stage=tool step={} tool={} status=completed references={}",
+                            AiRequestContext.requestId(), step + 1, toolCall.name(), result.references().size());
                     messages.add(new ChatMessage(ChatMessage.Role.TOOL, result.content(), toolCall.id()));
                 } catch (BusinessException exception) {
                     validationFailures++;
