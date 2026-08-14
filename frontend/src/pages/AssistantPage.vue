@@ -100,7 +100,13 @@ function loadConversation(): ConversationTurn[] {
   try {
     const stored = JSON.parse(raw) as unknown
     if (!Array.isArray(stored)) return []
-    return stored.filter(isConversationTurn)
+    const restored = stored.filter(isConversationTurn).map((turn) => ({
+      ...turn,
+      answer: turn.status === 'streaming' && !turn.answer ? '页面刷新已中断本次生成，请重新提问。' : turn.answer,
+      status: turn.status === 'streaming' ? 'cancelled' : turn.status,
+    }))
+    localStorage.setItem(conversationStorageKey(), JSON.stringify(restored))
+    return restored
   } catch {
     localStorage.removeItem(conversationStorageKey())
     return []
