@@ -157,15 +157,33 @@ public class AgentOrchestrator {
     }
 
     private ToolCall fallbackSearchCall(List<ChatMessage> messages, int step) {
-        String latestUserMessage = messages.stream()
+        List<String> userQuestions = messages.stream()
                 .filter(message -> message.role() == ChatMessage.Role.USER)
-                .reduce((ignored, latest) -> latest)
                 .map(ChatMessage::content)
-                .orElse("campus information");
-        Matcher matcher = QUESTION_PATTERN.matcher(latestUserMessage);
-        String keyword = matcher.find() ? matcher.group(1).trim() : latestUserMessage;
+                .map(this::extractQuestion)
+                .filter(question -> !question.isBlank())
+                .toList();
+        String latestQuestion = userQuestions.isEmpty()
+                ? "campus information"
+                : userQuestions.get(userQuestions.size() - 1);
+        String keyword = latestQuestion;
+        if (isContextualFollowUp(latestQuestion) && userQuestions.size() >= 2) {
+            keyword = userQuestions.get(userQuestions.size() - 2) + " " + latestQuestion;
+        }
         String arguments = "{\"keyword\":\"" + escapeJson(keyword) + "\"}";
         return new ToolCall("fallback-search-" + step, SEARCH_POSTS_TOOL, arguments);
+    }
+
+    private String extractQuestion(String message) {
+        Matcher matcher = QUESTION_PATTERN.matcher(message);
+        return matcher.find() ? matcher.group(1).trim() : message.trim();
+    }
+
+    private boolean isContextualFollowUp(String question) {
+        return question.startsWith("那") || question.startsWith("这") || question.startsWith("它")
+                || question.startsWith("具体") || question.startsWith("然后")
+                || question.startsWith("周末") || question.startsWith("工作日")
+                || question.startsWith("几点") || question.startsWith("何时");
     }
 
     private String escapeJson(String value) {

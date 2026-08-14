@@ -63,6 +63,22 @@ class AgentOrchestratorTests {
     }
 
     @Test
+    void usesThePreviousQuestionToRetrieveReferencesForAContextualFollowUp() {
+        CapturingReadTool tool = new CapturingReadTool("search_posts");
+        modelClient.scriptToolResponses(finalAnswer(), finalAnswer());
+        List<ChatMessage> conversation = List.of(
+                new ChatMessage(ChatMessage.Role.USER, "九龙湖校区自习室开放吗？"),
+                new ChatMessage(ChatMessage.Role.ASSISTANT, "自习室已开放。"),
+                new ChatMessage(ChatMessage.Role.USER, "<question>具体开放到几点？</question>"));
+
+        AgentResult result = orchestrator(tool).run(conversation, context);
+
+        assertThat(tool.arguments.get("keyword"))
+                .isEqualTo("九龙湖校区自习室开放吗？ 具体开放到几点？");
+        assertThat(result.references()).hasSize(1);
+    }
+
+    @Test
     void overridesForgedIdentityParametersWithServerContext() {
         CapturingReadTool tool = new CapturingReadTool("search_posts");
         modelClient.scriptToolResponses(
