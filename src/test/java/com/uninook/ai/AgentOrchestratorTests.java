@@ -45,6 +45,24 @@ class AgentOrchestratorTests {
     }
 
     @Test
+    void fallsBackToSearchWhenTheModelAnswersWithoutCallingATool() {
+        CapturingReadTool tool = new CapturingReadTool("search_posts");
+        modelClient.scriptToolResponses(finalAnswer(), finalAnswer());
+
+        AgentResult result = orchestrator(tool).run(List.of(userMessage()), context);
+
+        assertThat(tool.executions.get()).isEqualTo(1);
+        assertThat(tool.arguments).containsEntry("userId", 7L)
+                .containsEntry("schoolId", 10L)
+                .containsEntry("scope", "CAMPUS");
+        assertThat(result.references()).hasSize(1);
+        assertThat(modelClient.toolRequestHistory()).hasSize(2);
+        assertThat(modelClient.toolRequestHistory().get(1))
+                .extracting(ChatMessage::role)
+                .contains(ChatMessage.Role.TOOL);
+    }
+
+    @Test
     void overridesForgedIdentityParametersWithServerContext() {
         CapturingReadTool tool = new CapturingReadTool("search_posts");
         modelClient.scriptToolResponses(

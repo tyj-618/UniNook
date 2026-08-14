@@ -9,11 +9,15 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class AgentOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(AgentOrchestrator.class);
+    private static final String SEARCH_POSTS_TOOL = "search_posts";
+    private static final Pattern QUESTION_PATTERN = Pattern.compile("<question>\\s*(.*?)\\s*</question>", Pattern.DOTALL);
     private static final String REPETITION_MESSAGE = "这一步没有新信息，请换思路或给出当前最佳答案。";
     private static final String VALIDATION_PREFIX = "工具参数校验失败：";
     private final AiModelClient aiModelClient;
@@ -81,6 +85,17 @@ public class AgentOrchestrator {
                     AiRequestContext.requestId(), step + 1, modelResponse.inputTokens(), modelResponse.outputTokens(),
                     modelResponse.toolCalls().size());
             if (modelResponse.isFinalAnswer()) {
+                if (!executedTool && !toolCallsDisabled && toolRegistry.find(SEARCH_POSTS_TOOL).isPresent()) {
+                    ToolCall fallbackCall = fallbackSearchCall(messages, step + 1);
+                    messages.add(new ChatMessage(ChatMessage.Role.ASSISTANT, "", null, List.of(fallbackCall)));
+                    ToolExecutionResult result = toolCallExecutor.execute(fallbackCall, context);
+                    executedTool = true;
+                    references.addAll(result.references());
+                    messages.add(new ChatMessage(ChatMessage.Role.TOOL, result.content(), fallbackCall.id()));
+                    log.info("assistant requestId={} stage=tool step={} tool={} status=fallback references={}",
+                            AiRequestContext.requestId(), step + 1, fallbackCall.name(), result.references().size());
+                    continue;
+                }
                 if (modelResponse.content().isBlank()) {
                     throw new BusinessException(ErrorCode.INTERNAL_ERROR, "智能问答服务未返回有效内容");
                 }
@@ -139,6 +154,25 @@ public class AgentOrchestrator {
         return new AgentLoopResult(AgentResult.answer(
                 "已达到本次查询的最大执行步数，请根据当前已获得的信息调整问题后重试。", null, references),
                 messages, executedTool);
+    }
+
+    private ToolCall fallbackSearchCall(List<ChatMessage> messages, int step) {
+        String latestUserMessage = messages.stream()
+                .filter(message -> message.role() == ChatMessage.Role.USER)
+                .reduce((ignored, latest) -> latest)
+                .map(ChatMessage::content)
+                .orElse("campus information");
+        Matcher matcher = QUESTION_PATTERN.matcher(latestUserMessage);
+        String keyword = matcher.find() ? matcher.group(1).trim() : latestUserMessage;
+        String arguments = "{\"keyword\":\"" + escapeJson(keyword) + "\"}";
+        return new ToolCall("fallback-search-" + step, SEARCH_POSTS_TOOL, arguments);
+    }
+
+    private String escapeJson(String value) {
+        return value.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", " ")
+                .replace("\r", " ");
     }
 
     private record AgentLoopResult(AgentResult result, List<ChatMessage> messages, boolean executedTool) {
