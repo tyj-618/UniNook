@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS notice;
+DROP TABLE IF EXISTS admin_action_log;
 DROP TABLE IF EXISTS question_answer;
 DROP TABLE IF EXISTS question_subscription;
 DROP TABLE IF EXISTS question;
@@ -203,4 +204,16 @@ CREATE TABLE notice (
     KEY idx_receiver_read_created (receiver_id, read_status, created_at),
     KEY idx_receiver_created (receiver_id, created_at)
     ,KEY idx_notice_question (question_id)
+);
+
+CREATE TABLE admin_action_log (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    admin_user_id BIGINT NOT NULL,
+    action VARCHAR(64) NOT NULL,
+    target_type VARCHAR(32) NOT NULL,
+    target_id BIGINT DEFAULT NULL,
+    detail VARCHAR(500) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_admin_action_created (admin_user_id, created_at),
+    KEY idx_target_created (target_type, target_id, created_at)
 );

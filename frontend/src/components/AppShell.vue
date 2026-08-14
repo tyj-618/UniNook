@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bell, Bot, Compass, ListChecks, LogOut, Menu, PencilLine, UserRound, X } from '@lucide/vue'
+import { Bell, Bot, Compass, ListChecks, LogOut, Menu, PencilLine, ShieldCheck, UserRound, X } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUnreadNoticeCount } from '../api/notices.ts'
@@ -11,6 +11,8 @@ const isMobileNavigationOpen = ref(false)
 const unreadNoticeCount = ref(0)
 let unreadTimer: number | undefined
 const feedTarget = computed(() => ({ name: 'feed', query: feedRouteQuery() }))
+const isAdmin = computed(() => authStore.state.user?.role === 1)
+const adminLabel = '\u7ba1\u7406\u540e\u53f0'
 
 async function refreshUnreadNoticeCount(): Promise<void> {
   try { unreadNoticeCount.value = await getUnreadNoticeCount() } catch { unreadNoticeCount.value = 0 }
@@ -80,6 +82,7 @@ function closeMobileNavigation(): void {
           <RouterLink class="nav-item" to="/questions"><ListChecks :size="19" /><span>问题追踪</span></RouterLink>
           <RouterLink class="nav-item" to="/notices" @click="refreshUnreadNoticeCount"><Bell :size="19" /><span>通知</span><span v-if="unreadNoticeCount" class="notice-badge">{{ unreadNoticeCount > 99 ? '99+' : unreadNoticeCount }}</span></RouterLink>
           <RouterLink class="nav-item" to="/profile"><UserRound :size="19" /><span>我的主页</span></RouterLink>
+          <RouterLink v-if="isAdmin" class="nav-item" to="/admin"><ShieldCheck :size="19" /><span>{{ adminLabel }}</span></RouterLink>
         </nav>
       </aside>
       <main class="main-content">
@@ -99,6 +102,7 @@ function closeMobileNavigation(): void {
           <RouterLink class="nav-item" to="/questions" @click="closeMobileNavigation"><ListChecks :size="19" /><span>问题追踪</span></RouterLink>
           <RouterLink class="nav-item" to="/notices" @click="closeMobileNavigation(); refreshUnreadNoticeCount()"><Bell :size="19" /><span>通知</span><span v-if="unreadNoticeCount" class="notice-badge">{{ unreadNoticeCount > 99 ? '99+' : unreadNoticeCount }}</span></RouterLink>
           <RouterLink class="nav-item" to="/profile" @click="closeMobileNavigation"><UserRound :size="19" /><span>我的主页</span></RouterLink>
+          <RouterLink v-if="isAdmin" class="nav-item" to="/admin" @click="closeMobileNavigation"><ShieldCheck :size="19" /><span>{{ adminLabel }}</span></RouterLink>
         </nav>
       </aside>
     </div>

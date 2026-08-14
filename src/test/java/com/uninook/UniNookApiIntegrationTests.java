@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.net.URI;
@@ -32,9 +34,45 @@ class UniNookApiIntegrationTests {
     @LocalServerPort
     private int port;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void administratorCanReviewRecordsAndLeavesAnAuditTrail() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String adminUsername = "admin_" + suffix;
+        String memberUsername = "member_" + suffix;
+        register(adminUsername, "123456", "Admin");
+        register(memberUsername, "123456", "Member");
+
+        String adminToken = login(adminUsername, "123456");
+        String memberToken = login(memberUsername, "123456");
+        long adminId = get("/api/users/me", adminToken).at("/data/id").asLong();
+        jdbcTemplate.update("UPDATE `user` SET role = 1 WHERE id = ?", adminId);
+
+        Long postId = createPost(memberToken, firstCategoryId(), "Moderation verification " + suffix);
+        JsonNode postPage = get("/api/admin/posts?keyword=Moderation", adminToken);
+        assertCode(postPage, 0);
+        assertThat(postPage.at("/data/records")).anySatisfy(item ->
+                assertThat(item.at("/id").asLong()).isEqualTo(postId));
+
+        JsonNode userPage = get("/api/admin/users?keyword=" + memberUsername, adminToken);
+        assertCode(userPage, 0);
+        assertThat(userPage.at("/data/records/0/username").asText()).isEqualTo(memberUsername);
+
+        assertCode(put("/api/admin/posts/" + postId + "/hide", adminToken, null), 0);
+        JsonNode logs = get("/api/admin/action-logs", adminToken);
+        assertCode(logs, 0);
+        assertThat(logs.at("/data/records")).anySatisfy(item -> {
+            assertThat(item.at("/targetType").asText()).isEqualTo("POST");
+            assertThat(item.at("/targetId").asLong()).isEqualTo(postId);
+            assertThat(item.at("/action").asText()).isEqualTo("HIDE_POST");
+        });
+    }
 
     @Test
     void campusCircleCoreApiFlow() throws Exception {

@@ -285,3 +285,35 @@ export interface AiAssistantStreamMetadata {
   insufficientEvidence: boolean
   pendingAction: PendingPostAction | null
 }
+
+export interface AdminPostListItem {
+  id: number
+  title: string
+  status: number
+  authorId: number
+  authorNickname: string
+  schoolName: string | null
+  campusName: string | null
+  createdAt: string
+}
+
+export interface AdminUserListItem {
+  id: number
+  username: string
+  nickname: string
+  role: number
+  status: number
+  schoolName: string | null
+  campusName: string | null
+  createdAt: string
+}
+
+export interface AdminActionLogItem {
+  id: number
+  adminUserId: number
+  adminNickname: string
+  targetType: string
+  targetId: number | null
+  action: string
+  createdAt: string
+}

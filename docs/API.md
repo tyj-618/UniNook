@@ -324,6 +324,11 @@ Request:
 | PUT | `/api/admin/users/{userId}/disable` | 禁用用户 | 是 |
 | PUT | `/api/admin/users/{userId}/enable` | 启用用户 | 是 |
 | POST | `/api/admin/search/posts/reindex` | 重建全部正常帖子的 Elasticsearch 检索索引，返回已处理数量 | 是 |
+| GET | `/api/admin/posts` | 分页查询帖子；可选 `keyword`、`status`（0 正常、2 隐藏） | 是 |
+| GET | `/api/admin/users` | 分页查询用户；可选 `keyword`、`status`（0 正常、1 禁用） | 是 |
+| GET | `/api/admin/action-logs` | 分页查看管理操作审计记录 | 是 |
+
+管理操作会在 `admin_action_log` 中记录操作人、目标对象、动作和时间；隐藏/恢复帖子、禁用/启用用户以及重建检索索引均要求前端二次确认。
 
 ## Error Codes
 

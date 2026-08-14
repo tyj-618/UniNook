@@ -3,6 +3,7 @@ package com.uninook.admin;
 import com.uninook.auth.CurrentUserService;
 import com.uninook.common.AfterCommitExecutor;
 import com.uninook.common.ErrorCode;
+import com.uninook.common.PageResponse;
 import com.uninook.exception.BusinessException;
 import com.uninook.user.UserProfile;
 import com.uninook.user.UserMapper;
@@ -40,20 +41,23 @@ public class AdminService {
 
     @Transactional
     public void hidePost(Long postId, String authorization) {
-        requireAdmin(authorization);
+        Long adminUserId = requireAdmin(authorization);
         ensurePostExists(postId);
         adminMapper.updatePostStatus(postId, POST_STATUS_HIDDEN);
+        adminMapper.insertActionLog(adminUserId, "POST", postId, "HIDE_POST");
         publishIndexEventAfterCommit(postId);
     }
 
     @Transactional
     public void restorePost(Long postId, String authorization) {
-        requireAdmin(authorization);
+        Long adminUserId = requireAdmin(authorization);
         ensurePostExists(postId);
         adminMapper.updatePostStatus(postId, POST_STATUS_NORMAL);
+        adminMapper.insertActionLog(adminUserId, "POST", postId, "RESTORE_POST");
         publishIndexEventAfterCommit(postId);
     }
 
+    @Transactional
     public void disableUser(Long userId, String authorization) {
         Long currentUserId = requireAdmin(authorization);
         if (currentUserId.equals(userId)) {
@@ -62,21 +66,55 @@ public class AdminService {
 
         ensureUserExists(userId);
         adminMapper.updateUserStatus(userId, USER_STATUS_DISABLED);
+        adminMapper.insertActionLog(currentUserId, "USER", userId, "DISABLE_USER");
     }
 
+    @Transactional
     public void enableUser(Long userId, String authorization) {
-        requireAdmin(authorization);
+        Long adminUserId = requireAdmin(authorization);
         ensureUserExists(userId);
         adminMapper.updateUserStatus(userId, USER_STATUS_NORMAL);
+        adminMapper.insertActionLog(adminUserId, "USER", userId, "ENABLE_USER");
     }
 
+    @Transactional
     public int rebuildPostSearchIndex(String authorization) {
+        Long adminUserId = requireAdmin(authorization);
+        int rebuilt = postSearchIndexService.rebuildAll();
+        adminMapper.insertActionLog(adminUserId, "SEARCH", null, "REBUILD_POST_INDEX");
+        return rebuilt;
+    }
+
+    public PageResponse<AdminPostListItem> listPosts(String authorization, int page, int size, String keyword,
+                                                      Integer status) {
         requireAdmin(authorization);
-        return postSearchIndexService.rebuildAll();
+        String normalizedKeyword = normalizeKeyword(keyword);
+        long total = adminMapper.countPosts(normalizedKeyword, status);
+        return PageResponse.of(page, size, total,
+                adminMapper.selectPosts(normalizedKeyword, status, size, (page - 1) * size));
+    }
+
+    public PageResponse<AdminUserListItem> listUsers(String authorization, int page, int size, String keyword,
+                                                      Integer status) {
+        requireAdmin(authorization);
+        String normalizedKeyword = normalizeKeyword(keyword);
+        long total = adminMapper.countUsers(normalizedKeyword, status);
+        return PageResponse.of(page, size, total,
+                adminMapper.selectUsers(normalizedKeyword, status, size, (page - 1) * size));
+    }
+
+    public PageResponse<AdminActionLogItem> listActionLogs(String authorization, int page, int size) {
+        requireAdmin(authorization);
+        long total = adminMapper.countActionLogs();
+        return PageResponse.of(page, size, total, adminMapper.selectActionLogs(size, (page - 1) * size));
     }
 
     private void publishIndexEventAfterCommit(Long postId) {
         afterCommitExecutor.execute(() -> domainEventPublisher.publishPostSearchIndex(PostSearchIndexEvent.forPost(postId)));
+    }
+
+    private String normalizeKeyword(String keyword) {
+        return keyword == null ? null : keyword.trim();
     }
 
     private Long requireAdmin(String authorization) {

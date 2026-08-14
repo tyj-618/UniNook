@@ -15,6 +15,7 @@ import SchoolOnboardingPage from '../pages/SchoolOnboardingPage.vue'
 import QuestionTrackingPage from '../pages/QuestionTrackingPage.vue'
 import QuestionAnswerListPage from '../pages/QuestionAnswerListPage.vue'
 import NicknameOnboardingPage from '../pages/NicknameOnboardingPage.vue'
+import AdminPage from '../pages/AdminPage.vue'
 
 const scrollStorageKey = 'campuscircle.route-scroll-positions'
 
@@ -63,6 +64,7 @@ export const router = createRouter({
         { path: 'assistant', name: 'assistant', component: AssistantPage },
         { path: 'questions', name: 'questions', component: QuestionTrackingPage },
         { path: 'questions/:questionId(\\d+)/answers', name: 'question-answer-list', component: QuestionAnswerListPage },
+        { path: 'admin', name: 'admin', component: AdminPage, meta: { requiresAdmin: true } },
       ],
     },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
@@ -90,6 +92,10 @@ router.beforeEach(async (to, from) => {
       && to.name !== 'school-onboarding'
       && to.name !== 'nickname-onboarding') {
     return { name: 'school-onboarding' }
+  }
+
+  if (to.meta.requiresAdmin && authStore.state.user?.role !== 1) {
+    return { name: 'feed' }
   }
 
   if (to.meta.guestOnly && authStore.isAuthenticated.value) {

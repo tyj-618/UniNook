@@ -45,6 +45,24 @@ docker compose exec mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campusci
 docker compose exec -T mysql sh -lc 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle' < docs/db-migrations/013_repair_campus_catalog_encoding.sql
 ```
 
+## Admin console migration
+
+The minimal admin console stores hide/restore, enable/disable, and index-rebuild actions in
+`admin_action_log`. For an existing deployment, run this migration once after taking the usual
+database backup:
+
+```bash
+docker compose exec -T mysql sh -lc 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle' < docs/db-migrations/014_admin_action_log.sql
+```
+
+There is no public administrator registration route. Promote a verified account only after checking
+its identifier, then sign out and sign in again before opening `/admin`:
+
+```bash
+docker compose exec mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle -e "SELECT id, username, nickname, role, status FROM \`user\` ORDER BY id;"'
+docker compose exec mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle -e "UPDATE \`user\` SET role = 1 WHERE id = <verified-user-id>;"'
+```
+
 初次启动 Elasticsearch 可能需要几十秒。若首个版本暂不启用混合检索，可以移除 `--profile search`，并保持 `CAMPUSCIRCLE_SEARCH_ENABLED=false`。
 
 将 `deploy/nginx/campuscircle.conf.example` 复制到 Nginx 站点配置，替换域名和证书路径。签发证书后检查并重载配置：
