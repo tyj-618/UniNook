@@ -1,4 +1,10 @@
 :root {
+  --surface: #ffffff;
+  --line: #dce4df;
+  --ink: #17241f;
+  --muted: #63736c;
+  --accent: #0e7667;
+  --danger: #b42318;
   color: #18222d;
   background: #f6f8f7;
   font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
