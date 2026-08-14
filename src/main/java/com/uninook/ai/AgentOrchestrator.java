@@ -1,5 +1,8 @@
 package com.uninook.ai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uninook.common.ErrorCode;
 import com.uninook.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,21 +28,29 @@ public class AgentOrchestrator {
     private final ToolCallExecutor toolCallExecutor;
     private final AiProperties properties;
     private final AiOperationalMetrics metrics;
+    private final ObjectMapper objectMapper;
 
     public AgentOrchestrator(AiModelClient aiModelClient, ToolRegistry toolRegistry,
                              ToolCallExecutor toolCallExecutor, AiProperties properties) {
         this(aiModelClient, toolRegistry, toolCallExecutor, properties, AiOperationalMetrics.noOp());
     }
 
-    @Autowired
     public AgentOrchestrator(AiModelClient aiModelClient, ToolRegistry toolRegistry,
                              ToolCallExecutor toolCallExecutor, AiProperties properties,
                              AiOperationalMetrics metrics) {
+        this(aiModelClient, toolRegistry, toolCallExecutor, properties, metrics, new ObjectMapper());
+    }
+
+    @Autowired
+    public AgentOrchestrator(AiModelClient aiModelClient, ToolRegistry toolRegistry,
+                             ToolCallExecutor toolCallExecutor, AiProperties properties,
+                             AiOperationalMetrics metrics, ObjectMapper objectMapper) {
         this.aiModelClient = aiModelClient;
         this.toolRegistry = toolRegistry;
         this.toolCallExecutor = toolCallExecutor;
         this.properties = properties;
         this.metrics = metrics;
+        this.objectMapper = objectMapper;
     }
 
     public AgentResult run(List<ChatMessage> initialMessages, ToolExecutionContext context) {
@@ -126,7 +137,8 @@ public class AgentOrchestrator {
                     continue;
                 }
                 try {
-                    ToolExecutionResult result = toolCallExecutor.execute(toolCall, context);
+                    ToolCall executableToolCall = contextualizeSearchToolCall(toolCall, messages);
+                    ToolExecutionResult result = toolCallExecutor.execute(executableToolCall, context);
                     executedTool = true;
                     references.addAll(result.references());
                     if (result.pendingConfirmation()) {
@@ -157,6 +169,28 @@ public class AgentOrchestrator {
     }
 
     private ToolCall fallbackSearchCall(List<ChatMessage> messages, int step) {
+        String keyword = contextualSearchKeyword(messages);
+        String arguments = "{\"keyword\":\"" + escapeJson(keyword) + "\"}";
+        return new ToolCall("fallback-search-" + step, SEARCH_POSTS_TOOL, arguments);
+    }
+
+    private ToolCall contextualizeSearchToolCall(ToolCall toolCall, List<ChatMessage> messages) {
+        if (!SEARCH_POSTS_TOOL.equals(toolCall.name()) || !isContextualFollowUp(latestUserQuestion(messages))) {
+            return toolCall;
+        }
+        try {
+            var arguments = objectMapper.readValue(toolCall.argumentsJson(), new TypeReference<java.util.LinkedHashMap<String, Object>>() { });
+            if (!(arguments.get("keyword") instanceof String)) {
+                return toolCall;
+            }
+            arguments.put("keyword", contextualSearchKeyword(messages));
+            return new ToolCall(toolCall.id(), toolCall.name(), objectMapper.writeValueAsString(arguments));
+        } catch (JsonProcessingException exception) {
+            return toolCall;
+        }
+    }
+
+    private String contextualSearchKeyword(List<ChatMessage> messages) {
         List<String> userQuestions = messages.stream()
                 .filter(message -> message.role() == ChatMessage.Role.USER)
                 .map(ChatMessage::content)
@@ -170,8 +204,17 @@ public class AgentOrchestrator {
         if (isContextualFollowUp(latestQuestion) && userQuestions.size() >= 2) {
             keyword = userQuestions.get(userQuestions.size() - 2) + " " + latestQuestion;
         }
-        String arguments = "{\"keyword\":\"" + escapeJson(keyword) + "\"}";
-        return new ToolCall("fallback-search-" + step, SEARCH_POSTS_TOOL, arguments);
+        return keyword;
+    }
+
+    private String latestUserQuestion(List<ChatMessage> messages) {
+        return messages.stream()
+                .filter(message -> message.role() == ChatMessage.Role.USER)
+                .map(ChatMessage::content)
+                .map(this::extractQuestion)
+                .filter(question -> !question.isBlank())
+                .reduce((ignored, latest) -> latest)
+                .orElse("");
     }
 
     private String extractQuestion(String message) {
