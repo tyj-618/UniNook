@@ -16,5 +16,8 @@ public interface AiModelClient {
         generateStream(request.messages(), chunkConsumer);
     }
 
+    AgentModelResponse generateWithTools(java.util.List<ChatMessage> messages,
+                                         java.util.List<ToolDefinition> tools);
+
     AiTextResult generateText(AiModelRequest request);
 }

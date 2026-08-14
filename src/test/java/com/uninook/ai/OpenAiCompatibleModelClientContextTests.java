@@ -57,4 +57,33 @@ class OpenAiCompatibleModelClientContextTests {
                 Map.of("role", "user", "content", "second question")
         ));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void serializesFunctionDefinitionsAndToolObservations() {
+        AiProperties properties = new AiProperties();
+        properties.setModel("test-model");
+        OpenAiCompatibleModelClient client = new OpenAiCompatibleModelClient(properties);
+        ToolCall toolCall = new ToolCall("call-1", "search_posts", "{\"keyword\":\"library\"}");
+
+        Map<String, Object> requestBody = client.buildToolRequestBody(List.of(
+                new ChatMessage(ChatMessage.Role.SYSTEM, "system"),
+                new ChatMessage(ChatMessage.Role.ASSISTANT, "", null, List.of(toolCall)),
+                new ChatMessage(ChatMessage.Role.TOOL, "Found one post", "call-1")
+        ), List.of(new ToolDefinition("search_posts", "Search posts", Map.of(
+                "type", "object", "properties", Map.of("keyword", Map.of("type", "string"))
+        ), ToolOperation.READ)));
+
+        assertThat(requestBody).containsEntry("tool_choice", "auto");
+        List<Map<String, Object>> tools = (List<Map<String, Object>>) requestBody.get("tools");
+        List<Map<String, Object>> messages = (List<Map<String, Object>>) requestBody.get("messages");
+        assertThat(tools).singleElement().satisfies(tool -> {
+            assertThat(tool).containsEntry("type", "function");
+            assertThat((Map<String, Object>) tool.get("function"))
+                    .containsEntry("name", "search_posts");
+        });
+        assertThat(messages.get(1)).containsKey("tool_calls");
+        assertThat(messages.get(2)).containsEntry("role", "tool")
+                .containsEntry("tool_call_id", "call-1");
+    }
 }

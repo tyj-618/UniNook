@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.ArrayList;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,7 +45,7 @@ class AiAssistantServiceTests {
                 currentUserService, userMapper, schoolService, postRetriever,
                 new PromptBuilder(), modelClient,
                 new AiRequestRateLimiter(properties, (userId, limit) -> true), sessionStore,
-                new SlidingWindowChatContextCompressor(properties));
+                new SlidingWindowChatContextCompressor(properties), agentOrchestrator(modelClient, properties));
 
         when(currentUserService.requireUserId(anyString())).thenReturn(7L);
         when(userMapper.findProfileById(7L)).thenReturn(Optional.of(userProfile()));
@@ -77,13 +78,14 @@ class AiAssistantServiceTests {
                 currentUserService, userMapper, schoolService, postRetriever,
                 new PromptBuilder(), localModelClient,
                 new AiRequestRateLimiter(properties, (userId, limit) -> true), store,
-                new SlidingWindowChatContextCompressor(properties));
+                new SlidingWindowChatContextCompressor(properties), agentOrchestrator(localModelClient, properties));
 
         singleTurnService.ask("Bearer token", new AiAssistantRequest("图书馆几点开门", CampusScope.CAMPUS, null, null));
 
         assertThat(localModelClient.lastGeneratedMessages())
                 .extracting(ChatMessage::role)
-                .containsExactly(ChatMessage.Role.SYSTEM, ChatMessage.Role.USER);
+                .contains(ChatMessage.Role.SYSTEM, ChatMessage.Role.USER,
+                        ChatMessage.Role.ASSISTANT, ChatMessage.Role.TOOL);
         verifyNoInteractions(store);
     }
 
@@ -105,5 +107,11 @@ class AiAssistantServiceTests {
         return new UserProfile(7L, "student", "学生", 10L, 1L,
                 "示例大学", "示例校区", "示例城市", null, null, 0, 1,
                 true, null, null);
+    }
+
+    private AgentOrchestrator agentOrchestrator(AiModelClient client, AiProperties properties) {
+        ToolRegistry registry = new ToolRegistry(List.of(new SearchPostsTool(postRetriever, schoolService)));
+        ToolCallExecutor executor = new ToolCallExecutor(registry, new ToolSecurityValidator(new ObjectMapper()));
+        return new AgentOrchestrator(client, registry, executor, properties);
     }
 }

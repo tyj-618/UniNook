@@ -29,12 +29,13 @@ public class AiAssistantService {
     private final AiRequestRateLimiter aiRequestRateLimiter;
     private final ChatSessionStore chatSessionStore;
     private final ChatContextCompressor chatContextCompressor;
+    private final AgentOrchestrator agentOrchestrator;
 
     public AiAssistantService(CurrentUserService currentUserService, UserMapper userMapper,
                               SchoolService schoolService, PostRetriever postRetriever,
                               PromptBuilder promptBuilder, AiModelClient aiModelClient,
                               AiRequestRateLimiter aiRequestRateLimiter, ChatSessionStore chatSessionStore,
-                              ChatContextCompressor chatContextCompressor) {
+                              ChatContextCompressor chatContextCompressor, AgentOrchestrator agentOrchestrator) {
         this.currentUserService = currentUserService;
         this.userMapper = userMapper;
         this.schoolService = schoolService;
@@ -44,6 +45,7 @@ public class AiAssistantService {
         this.aiRequestRateLimiter = aiRequestRateLimiter;
         this.chatSessionStore = chatSessionStore;
         this.chatContextCompressor = chatContextCompressor;
+        this.agentOrchestrator = agentOrchestrator;
     }
 
     public AiAssistantResponse ask(String authorization, AiAssistantRequest request) {
@@ -52,35 +54,15 @@ public class AiAssistantService {
         UserProfile user = userMapper.findProfileById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
 
-        CampusScope scope = CampusScope.resolve(request.scope(), request.radiusKm());
-        List<Long> allowedSchoolIds = schoolService.listScopeSchoolIds(user.schoolId(), scope);
-        List<RetrievedPost> posts = postRetriever.retrieve(
-                new RetrievalQuery(request.question(), allowedSchoolIds, RETRIEVAL_LIMIT));
         List<ChatMessage> history = loadHistory(userId, request.sessionId());
-        if (posts.isEmpty()) {
-            AiAssistantResponse response = new AiAssistantResponse(
-                    "在当前查看范围内暂未找到相关校园帖子。",
-                    List.of(), true, UUID.randomUUID().toString());
-            saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
-            return response;
-        }
-
-        AiModelResult result = aiModelClient.generate(promptBuilder.build(request.question(), posts, history));
-        Map<Long, RetrievedPost> postsById = posts.stream()
-                .collect(Collectors.toMap(RetrievedPost::id, Function.identity()));
-        Set<Long> validPostIds = result.citedPostIds().stream()
-                .filter(postsById::containsKey)
-                .collect(Collectors.toSet());
-        List<AiPostReference> references = posts.stream()
-                .filter(post -> validPostIds.contains(post.id()))
-                .map(AiPostReference::from)
-                .toList();
-
+        CampusScope scope = CampusScope.resolve(request.scope(), request.radiusKm());
+        AgentResult result = agentOrchestrator.run(promptBuilder.buildAgent(request.question(), history).messages(),
+                new ToolExecutionContext(userId, user, scope));
         AiAssistantResponse response = new AiAssistantResponse(
                 result.answer(),
-                references,
-                result.insufficientEvidence() || references.isEmpty(),
-                result.requestId());
+                result.references(),
+                !result.pendingConfirmation() && result.references().isEmpty(),
+                result.requestId() == null ? UUID.randomUUID().toString() : result.requestId());
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
         return response;
     }

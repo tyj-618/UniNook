@@ -16,6 +16,8 @@ public class AiProperties {
     private int streamReadTimeoutSeconds = 90;
     private int chatSessionTtlSeconds = 1800;
     private int chatSessionMaxMessages = 12;
+    private int agentMaxSteps = 6;
+    private int agentMaxValidationRetries = 3;
     private boolean structuredOutput;
     private Boolean enableThinking;
 
@@ -105,6 +107,22 @@ public class AiProperties {
 
     public void setChatSessionMaxMessages(int chatSessionMaxMessages) {
         this.chatSessionMaxMessages = chatSessionMaxMessages;
+    }
+
+    public int getAgentMaxSteps() {
+        return agentMaxSteps;
+    }
+
+    public void setAgentMaxSteps(int agentMaxSteps) {
+        this.agentMaxSteps = agentMaxSteps;
+    }
+
+    public int getAgentMaxValidationRetries() {
+        return agentMaxValidationRetries;
+    }
+
+    public void setAgentMaxValidationRetries(int agentMaxValidationRetries) {
+        this.agentMaxValidationRetries = agentMaxValidationRetries;
     }
 
     public boolean isStructuredOutput() {

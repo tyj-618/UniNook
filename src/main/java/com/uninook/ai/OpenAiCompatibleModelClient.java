@@ -190,6 +190,44 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
         }
     }
 
+    @Override
+    public AgentModelResponse generateWithTools(List<ChatMessage> messages, List<ToolDefinition> tools) {
+        ensureConfigured();
+        long startedAt = System.currentTimeMillis();
+        for (int attempt = 0; attempt <= properties.getMaxRetries(); attempt++) {
+            try {
+                String responseBody = restClient.post()
+                        .uri("/chat/completions")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(buildToolRequestBody(messages, tools))
+                        .retrieve()
+                        .body(String.class);
+                AgentModelResponse result = parseToolResponse(parseProviderResponse(responseBody));
+                log.info("AI tool call succeeded: requestId={}, model={}, elapsedMs={}",
+                        result.requestId(), properties.getModel(), System.currentTimeMillis() - startedAt);
+                return result;
+            } catch (RestClientResponseException exception) {
+                if (isRetryable(exception) && attempt < properties.getMaxRetries()) {
+                    backoff(attempt);
+                    continue;
+                }
+                log.warn("AI tool call failed: model={}, status={}, elapsedMs={}", properties.getModel(),
+                        exception.getStatusCode().value(), System.currentTimeMillis() - startedAt);
+                throw unavailable();
+            } catch (ResourceAccessException exception) {
+                if (attempt < properties.getMaxRetries()) {
+                    backoff(attempt);
+                    continue;
+                }
+                log.warn("AI tool call timed out or could not connect: model={}, elapsedMs={}", properties.getModel(),
+                        System.currentTimeMillis() - startedAt);
+                throw unavailable();
+            }
+        }
+        throw unavailable();
+    }
+
     Map<String, Object> buildRequestBody(AiModelRequest request) {
         return buildRequestBody(request.messages());
     }
@@ -218,6 +256,40 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
         body.put("max_tokens", properties.getMaxOutputTokens());
         body.put("stream", true);
         return body;
+    }
+
+    Map<String, Object> buildToolRequestBody(List<ChatMessage> messages, List<ToolDefinition> tools) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", properties.getModel());
+        body.put("messages", messages.stream().map(this::toProviderMessage).toList());
+        body.put("tools", tools.stream().map(tool -> Map.of(
+                "type", "function",
+                "function", Map.of("name", tool.name(), "description", tool.description(), "parameters", tool.parameters())
+        )).toList());
+        body.put("tool_choice", "auto");
+        body.put("temperature", 0.2);
+        body.put("max_tokens", properties.getMaxOutputTokens());
+        if (properties.getEnableThinking() != null) {
+            body.put("enable_thinking", properties.getEnableThinking());
+        }
+        return body;
+    }
+
+    private Map<String, Object> toProviderMessage(ChatMessage message) {
+        Map<String, Object> providerMessage = new LinkedHashMap<>();
+        providerMessage.put("role", message.providerRole());
+        providerMessage.put("content", message.content());
+        if (message.toolCallId() != null && !message.toolCallId().isBlank()) {
+            providerMessage.put("tool_call_id", message.toolCallId());
+        }
+        if (!message.toolCalls().isEmpty()) {
+            providerMessage.put("tool_calls", message.toolCalls().stream().map(toolCall -> Map.of(
+                    "id", toolCall.id(),
+                    "type", "function",
+                    "function", Map.of("name", toolCall.name(), "arguments", toolCall.argumentsJson())
+            )).toList());
+        }
+        return providerMessage;
     }
 
     private void emitDeltaContent(String data, AiStreamChunkConsumer chunkConsumer) throws IOException {
@@ -268,6 +340,23 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
         }
     }
 
+    private AgentModelResponse parseToolResponse(ProviderResponse response) {
+        if (response == null || response.choices() == null || response.choices().isEmpty()
+                || response.choices().get(0).message() == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "模型服务返回格式异常");
+        }
+        ProviderMessage message = response.choices().get(0).message();
+        List<ToolCall> toolCalls = message.toolCalls() == null ? List.of() : message.toolCalls().stream()
+                .filter(call -> call.function() != null && call.function().name() != null)
+                .map(call -> new ToolCall(
+                        call.id() == null || call.id().isBlank() ? UUID.randomUUID().toString() : call.id(),
+                        call.function().name(),
+                        call.function().arguments() == null ? "{}" : call.function().arguments()))
+                .toList();
+        String requestId = response.id() == null || response.id().isBlank() ? UUID.randomUUID().toString() : response.id();
+        return new AgentModelResponse(message.content(), toolCalls, requestId);
+    }
+
     private void ensureConfigured() {
         if (isBlank(properties.getBaseUrl()) || isBlank(properties.getApiKey()) || isBlank(properties.getModel())) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "模型服务未完成配置");
@@ -312,13 +401,20 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
         return trimmed.substring(firstLineEnd + 1, closingFence).trim();
     }
 
-    private record ProviderMessage(String role, String content) {
+    private record ProviderMessage(String role, String content,
+                                   @JsonProperty("tool_calls") List<ProviderToolCall> toolCalls) {
     }
 
     private record ProviderResponse(String id, List<ProviderChoice> choices, ProviderUsage usage) {
     }
 
     private record ProviderChoice(ProviderMessage message) {
+    }
+
+    private record ProviderToolCall(String id, ProviderFunction function) {
+    }
+
+    private record ProviderFunction(String name, String arguments) {
     }
 
     private record ProviderUsage(

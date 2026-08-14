@@ -4,6 +4,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -14,7 +16,10 @@ import java.util.regex.Pattern;
 public class MockAiModelClient implements AiModelClient {
 
     private static final Pattern POST_ID_PATTERN = Pattern.compile("postId: (\\d+)");
+    private static final Pattern QUESTION_PATTERN = Pattern.compile("<question>\\s*(.*?)\\s*</question>", Pattern.DOTALL);
     private final AtomicReference<List<ChatMessage>> lastGeneratedMessages = new AtomicReference<>(List.of());
+    private final ConcurrentLinkedDeque<AgentModelResponse> scriptedToolResponses = new ConcurrentLinkedDeque<>();
+    private final List<List<ChatMessage>> toolRequestHistory = new CopyOnWriteArrayList<>();
 
     @Override
     public AiModelResult generate(List<ChatMessage> messages) {
@@ -51,8 +56,43 @@ public class MockAiModelClient implements AiModelClient {
         }
     }
 
+    @Override
+    public AgentModelResponse generateWithTools(List<ChatMessage> messages, List<ToolDefinition> tools) {
+        List<ChatMessage> copiedMessages = List.copyOf(messages);
+        lastGeneratedMessages.set(copiedMessages);
+        toolRequestHistory.add(copiedMessages);
+        AgentModelResponse scriptedResponse = scriptedToolResponses.pollFirst();
+        if (scriptedResponse != null) {
+            return scriptedResponse;
+        }
+        boolean hasToolObservation = copiedMessages.stream().anyMatch(message -> message.role() == ChatMessage.Role.TOOL);
+        if (!hasToolObservation) {
+            String userMessage = copiedMessages.stream()
+                    .filter(message -> message.role() == ChatMessage.Role.USER)
+                    .reduce((ignored, latest) -> latest)
+                    .map(ChatMessage::content)
+                    .orElse("campus information");
+            Matcher questionMatcher = QUESTION_PATTERN.matcher(userMessage);
+            String keyword = questionMatcher.find() ? questionMatcher.group(1).trim() : userMessage;
+            return new AgentModelResponse("", List.of(new ToolCall(
+                    "mock-search-1", "search_posts", "{\"keyword\":\"" + escapeJson(keyword) + "\",\"user_id\":99999}")),
+                    UUID.randomUUID().toString());
+        }
+        return new AgentModelResponse("已根据校园帖子检索结果整理了可参考的信息。", List.of(), UUID.randomUUID().toString());
+    }
+
     List<ChatMessage> lastGeneratedMessages() {
         return lastGeneratedMessages.get();
+    }
+
+    void scriptToolResponses(AgentModelResponse... responses) {
+        scriptedToolResponses.clear();
+        java.util.Collections.addAll(scriptedToolResponses, responses);
+        toolRequestHistory.clear();
+    }
+
+    List<List<ChatMessage>> toolRequestHistory() {
+        return List.copyOf(toolRequestHistory);
     }
 
     @Override
@@ -61,5 +101,9 @@ public class MockAiModelClient implements AiModelClient {
                 "{\"score\":50,\"verdict\":\"UNCERTAIN\",\"reason\":\"模拟模式未调用真实模型。\"}",
                 UUID.randomUUID().toString(), 0, 0
         );
+    }
+
+    private String escapeJson(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ");
     }
 }
