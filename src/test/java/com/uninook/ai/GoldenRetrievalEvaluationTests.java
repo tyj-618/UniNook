@@ -26,9 +26,10 @@ class GoldenRetrievalEvaluationTests {
     @Test
     void reportsTopKHitRateForGoldenRetrievalSet() throws IOException {
         List<GoldenCase> cases = loadCases();
+        List<CorpusPost> corpus = loadCorpus();
         PostMapper postMapper = mock(PostMapper.class);
         when(postMapper.findPostsBySchoolIdsAndKeyword(eq(List.of(1L)), anyString(), eq(5)))
-                .thenAnswer(invocation -> matchingPosts(cases, invocation.getArgument(1)));
+                .thenAnswer(invocation -> matchingPosts(corpus, invocation.getArgument(1)));
         PostRetriever retriever = new PostRetrievalService(postMapper);
 
         long hits = cases.stream()
@@ -45,8 +46,7 @@ class GoldenRetrievalEvaluationTests {
     }
 
     private List<GoldenCase> loadCases() throws IOException {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                getClass().getResourceAsStream("/ai/golden-retrieval.csv"), StandardCharsets.UTF_8))) {
+        try (BufferedReader reader = resourceReader("/ai/golden-retrieval.csv")) {
             return reader.lines()
                     .skip(1)
                     .map(line -> line.split(",", 3))
@@ -55,15 +55,38 @@ class GoldenRetrievalEvaluationTests {
         }
     }
 
-    private List<PostListItem> matchingPosts(List<GoldenCase> cases, String keyword) {
-        return cases.stream()
-                .filter(testCase -> testCase.query().contains(keyword) || keyword.contains(testCase.query()))
-                .map(testCase -> new PostListItem(testCase.expectedPostId(), testCase.query(), testCase.answerPoint(),
+    private List<CorpusPost> loadCorpus() throws IOException {
+        try (BufferedReader reader = resourceReader("/ai/golden-retrieval-corpus.csv")) {
+            return reader.lines()
+                    .skip(1)
+                    .map(line -> line.split(",", 3))
+                    .map(columns -> new CorpusPost(Long.parseLong(columns[0]), columns[1], columns[2]))
+                    .toList();
+        }
+    }
+
+    private BufferedReader resourceReader(String resourcePath) {
+        return new BufferedReader(new InputStreamReader(
+                java.util.Objects.requireNonNull(getClass().getResourceAsStream(resourcePath)), StandardCharsets.UTF_8));
+    }
+
+    private List<PostListItem> matchingPosts(List<CorpusPost> corpus, String keyword) {
+        String compactKeyword = compact(keyword);
+        return corpus.stream()
+                .filter(post -> compact(post.title() + post.content()).contains(compactKeyword))
+                .map(post -> new PostListItem(post.id(), post.title(), post.content(),
                         1L, "Example University", "Example Campus", "Example City", 1L, "Campus", "campus",
                         1L, "tester", null, 0, 0, 0, 0D, LocalDateTime.now()))
                 .toList();
     }
 
+    private String compact(String value) {
+        return value.toLowerCase().replaceAll("[^a-z0-9]", "");
+    }
+
     private record GoldenCase(String query, Long expectedPostId, String answerPoint) {
+    }
+
+    private record CorpusPost(Long id, String title, String content) {
     }
 }

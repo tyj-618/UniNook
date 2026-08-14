@@ -45,7 +45,8 @@ class AiAssistantServiceTests {
                 currentUserService, userMapper, schoolService, postRetriever,
                 new PromptBuilder(), modelClient,
                 new AiRequestRateLimiter(properties, (userId, limit) -> true), sessionStore,
-                new SlidingWindowChatContextCompressor(properties), agentOrchestrator(modelClient, properties));
+                new SlidingWindowChatContextCompressor(properties), agentOrchestrator(modelClient, properties),
+                new InMemoryChatSessionLockManager());
 
         when(currentUserService.requireUserId(anyString())).thenReturn(7L);
         when(userMapper.findProfileById(7L)).thenReturn(Optional.of(userProfile()));
@@ -78,7 +79,8 @@ class AiAssistantServiceTests {
                 currentUserService, userMapper, schoolService, postRetriever,
                 new PromptBuilder(), localModelClient,
                 new AiRequestRateLimiter(properties, (userId, limit) -> true), store,
-                new SlidingWindowChatContextCompressor(properties), agentOrchestrator(localModelClient, properties));
+                new SlidingWindowChatContextCompressor(properties), agentOrchestrator(localModelClient, properties),
+                new InMemoryChatSessionLockManager());
 
         singleTurnService.ask("Bearer token", new AiAssistantRequest("图书馆几点开门", CampusScope.CAMPUS, null, null));
 
@@ -98,6 +100,10 @@ class AiAssistantServiceTests {
                 chunk -> { });
 
         assertThat(firstChunks).hasSizeGreaterThan(1);
+        assertThat(modelClient.lastGeneratedMessages())
+                .extracting(ChatMessage::role)
+                .contains(ChatMessage.Role.TOOL);
+        assertThat(modelClient.toolRequestHistory()).hasSize(4);
         assertThat(modelClient.lastGeneratedMessages())
                 .extracting(ChatMessage::content)
                 .contains("图书馆几点开门");

@@ -366,7 +366,9 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
                         call.function().arguments() == null ? "{}" : call.function().arguments()))
                 .toList();
         String requestId = response.id() == null || response.id().isBlank() ? UUID.randomUUID().toString() : response.id();
-        return new AgentModelResponse(message.content(), toolCalls, requestId);
+        Integer inputTokens = response.usage() == null ? null : response.usage().inputTokens();
+        Integer outputTokens = response.usage() == null ? null : response.usage().outputTokens();
+        return new AgentModelResponse(message.content(), toolCalls, requestId, inputTokens, outputTokens);
     }
 
     private void ensureConfigured() {

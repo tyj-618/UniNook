@@ -19,10 +19,11 @@ export async function streamAssistant(
   scope: CampusScope,
   sessionId: string,
   handlers: AssistantStreamHandlers,
+  signal?: AbortSignal,
 ): Promise<void> {
-  let response = await openStream(question, scope, sessionId, readAccessToken())
+  let response = await openStream(question, scope, sessionId, readAccessToken(), signal)
   if (response.status === 401) {
-    response = await openStream(question, scope, sessionId, await refreshAccessToken())
+    response = await openStream(question, scope, sessionId, await refreshAccessToken(), signal)
   }
   if (!response.ok) throw new Error(await responseErrorMessage(response))
   if (!response.body) throw new Error('浏览器不支持流式响应。')
@@ -43,11 +44,18 @@ export async function streamAssistant(
   }
 }
 
-async function openStream(question: string, scope: CampusScope, sessionId: string, token: string | null): Promise<Response> {
+async function openStream(
+  question: string,
+  scope: CampusScope,
+  sessionId: string,
+  token: string | null,
+  signal?: AbortSignal,
+): Promise<Response> {
   return fetch(`${apiBaseUrl}/ai/assistant/stream`, {
     method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ question, scope, sessionId }),
+    signal,
   })
 }
 

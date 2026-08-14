@@ -7,17 +7,19 @@ import com.uninook.school.CampusScope;
 import com.uninook.school.SchoolService;
 import com.uninook.user.UserMapper;
 import com.uninook.user.UserProfile;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class AiAssistantService {
 
     private static final Logger log = LoggerFactory.getLogger(AiAssistantService.class);
-    private static final int RETRIEVAL_LIMIT = 5;
     private final CurrentUserService currentUserService;
     private final UserMapper userMapper;
     private final SchoolService schoolService;
@@ -28,12 +30,27 @@ public class AiAssistantService {
     private final ChatSessionStore chatSessionStore;
     private final ChatContextCompressor chatContextCompressor;
     private final AgentOrchestrator agentOrchestrator;
+    private final ChatSessionLockManager chatSessionLockManager;
+    private final AiOperationalMetrics metrics;
 
     public AiAssistantService(CurrentUserService currentUserService, UserMapper userMapper,
                               SchoolService schoolService, PostRetriever postRetriever,
                               PromptBuilder promptBuilder, AiModelClient aiModelClient,
                               AiRequestRateLimiter aiRequestRateLimiter, ChatSessionStore chatSessionStore,
-                              ChatContextCompressor chatContextCompressor, AgentOrchestrator agentOrchestrator) {
+                              ChatContextCompressor chatContextCompressor, AgentOrchestrator agentOrchestrator,
+                              ChatSessionLockManager chatSessionLockManager) {
+        this(currentUserService, userMapper, schoolService, postRetriever, promptBuilder, aiModelClient,
+                aiRequestRateLimiter, chatSessionStore, chatContextCompressor, agentOrchestrator,
+                chatSessionLockManager, AiOperationalMetrics.noOp());
+    }
+
+    @Autowired
+    public AiAssistantService(CurrentUserService currentUserService, UserMapper userMapper,
+                              SchoolService schoolService, PostRetriever postRetriever,
+                              PromptBuilder promptBuilder, AiModelClient aiModelClient,
+                              AiRequestRateLimiter aiRequestRateLimiter, ChatSessionStore chatSessionStore,
+                              ChatContextCompressor chatContextCompressor, AgentOrchestrator agentOrchestrator,
+                              ChatSessionLockManager chatSessionLockManager, AiOperationalMetrics metrics) {
         this.currentUserService = currentUserService;
         this.userMapper = userMapper;
         this.schoolService = schoolService;
@@ -44,6 +61,8 @@ public class AiAssistantService {
         this.chatSessionStore = chatSessionStore;
         this.chatContextCompressor = chatContextCompressor;
         this.agentOrchestrator = agentOrchestrator;
+        this.chatSessionLockManager = chatSessionLockManager;
+        this.metrics = metrics;
     }
 
     public AiAssistantResponse ask(String authorization, AiAssistantRequest request) {
@@ -51,27 +70,26 @@ public class AiAssistantService {
         try {
             log.info("assistant requestId={} mode=agent sessionPresent={}", requestId,
                     request.sessionId() != null && !request.sessionId().isBlank());
-            return askInternal(authorization, request, requestId);
+            Long userId = currentUserService.requireUserId(authorization);
+            try (ChatSessionLockManager.SessionLock ignored = chatSessionLockManager.acquire(userId, request.sessionId())) {
+                return askInternal(userId, request, requestId);
+            }
         } finally {
             AiRequestContext.clear();
         }
     }
 
-    private AiAssistantResponse askInternal(String authorization, AiAssistantRequest request, String requestId) {
-        Long userId = currentUserService.requireUserId(authorization);
+    private AiAssistantResponse askInternal(Long userId, AiAssistantRequest request, String requestId) {
         aiRequestRateLimiter.check(userId);
         UserProfile user = userMapper.findProfileById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
-
         List<ChatMessage> history = loadHistory(userId, request.sessionId());
         CampusScope scope = CampusScope.resolve(request.scope(), request.radiusKm());
         AgentResult result = agentOrchestrator.run(promptBuilder.buildAgent(request.question(), history).messages(),
                 new ToolExecutionContext(userId, user, scope));
         AiAssistantResponse response = new AiAssistantResponse(
-                result.answer(),
-                result.references(),
-                !result.pendingConfirmation() && result.references().isEmpty(),
-                requestId);
+                result.answer(), result.references(),
+                !result.pendingConfirmation() && result.references().isEmpty(), requestId);
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
         log.info("assistant requestId={} stage=response references={} pendingConfirmation={}", requestId,
                 response.references().size(), result.pendingConfirmation());
@@ -79,51 +97,57 @@ public class AiAssistantService {
     }
 
     public AiAssistantResponse stream(String authorization, AiAssistantRequest request,
-                                      AiStreamChunkConsumer chunkConsumer) throws java.io.IOException {
+                                      AiStreamChunkConsumer chunkConsumer) throws IOException {
         String requestId = AiRequestContext.begin(null);
         try {
-            return streamInternal(authorization, request, chunkConsumer, requestId);
+            Long userId = currentUserService.requireUserId(authorization);
+            try (ChatSessionLockManager.SessionLock ignored = chatSessionLockManager.acquire(userId, request.sessionId())) {
+                return streamInternal(userId, request, chunkConsumer, requestId);
+            }
         } finally {
             AiRequestContext.clear();
         }
     }
 
-    private AiAssistantResponse streamInternal(String authorization, AiAssistantRequest request,
-                                               AiStreamChunkConsumer chunkConsumer, String requestId) throws java.io.IOException {
-        Long userId = currentUserService.requireUserId(authorization);
+    private AiAssistantResponse streamInternal(Long userId, AiAssistantRequest request,
+                                               AiStreamChunkConsumer chunkConsumer, String requestId) throws IOException {
         aiRequestRateLimiter.check(userId);
         UserProfile user = userMapper.findProfileById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
-
-        CampusScope scope = CampusScope.resolve(request.scope(), request.radiusKm());
-        List<Long> allowedSchoolIds = schoolService.listScopeSchoolIds(user.schoolId(), scope);
-        List<RetrievedPost> posts = postRetriever.retrieve(
-                new RetrievalQuery(request.question(), allowedSchoolIds, RETRIEVAL_LIMIT));
         List<ChatMessage> history = loadHistory(userId, request.sessionId());
-        if (posts.isEmpty()) {
-            String answer = "在当前查看范围内暂未找到相关校园帖子。";
+        CampusScope scope = CampusScope.resolve(request.scope(), request.radiusKm());
+        AgentStreamingPlan plan = agentOrchestrator.prepareForStreaming(
+                promptBuilder.buildAgent(request.question(), history).messages(),
+                new ToolExecutionContext(userId, user, scope));
+
+        String answer;
+        if (plan.requiresModelStream()) {
+            StringBuilder generated = new StringBuilder();
+            long streamStartedAt = System.currentTimeMillis();
+            try {
+                aiModelClient.generateStream(plan.finalMessages(), chunk -> {
+                    generated.append(chunk);
+                    chunkConsumer.accept(chunk);
+                });
+                metrics.recordModelCall("stream", "success", System.currentTimeMillis() - streamStartedAt, null, null);
+            } catch (IOException | BusinessException exception) {
+                metrics.recordModelCall("stream", "failed", System.currentTimeMillis() - streamStartedAt, null, null);
+                throw exception;
+            }
+            answer = generated.toString().trim();
+            if (answer.isBlank()) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "智能问答服务未返回有效内容");
+            }
+        } else {
+            answer = plan.immediateAnswer();
             chunkConsumer.accept(answer);
-            AiAssistantResponse response = new AiAssistantResponse(answer, List.of(), true, requestId);
-            saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
-            return response;
         }
 
-        StringBuilder answer = new StringBuilder();
-        aiModelClient.generateStream(promptBuilder.buildStreaming(request.question(), posts, history), chunk -> {
-            answer.append(chunk);
-            chunkConsumer.accept(chunk);
-        });
-        if (answer.toString().isBlank()) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "智能问答服务未返回有效内容");
-        }
-        List<AiPostReference> references = posts.stream()
-                .limit(3)
-                .map(AiPostReference::from)
-                .toList();
         AiAssistantResponse response = new AiAssistantResponse(
-                answer.toString().trim(), references, references.isEmpty(), requestId);
+                answer, plan.references(), !plan.pendingConfirmation() && plan.references().isEmpty(), requestId);
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
-        log.info("assistant requestId={} stage=stream-response references={}", requestId, references.size());
+        log.info("assistant requestId={} stage=stream-response references={} pendingConfirmation={} modelStream={}",
+                requestId, response.references().size(), plan.pendingConfirmation(), plan.requiresModelStream());
         return response;
     }
 
@@ -139,7 +163,7 @@ public class AiAssistantService {
         if (sessionId == null || sessionId.isBlank()) {
             return;
         }
-        List<ChatMessage> updated = new java.util.ArrayList<>(history);
+        List<ChatMessage> updated = new ArrayList<>(history);
         updated.add(new ChatMessage(ChatMessage.Role.USER, question));
         updated.add(new ChatMessage(ChatMessage.Role.ASSISTANT, answer));
         chatSessionStore.save(userId, sessionId, chatContextCompressor.compress(updated));

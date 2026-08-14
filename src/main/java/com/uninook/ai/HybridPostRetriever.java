@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
@@ -31,16 +32,25 @@ public class HybridPostRetriever implements PostRetriever {
     private final PostMapper postMapper;
     private final SearchProperties properties;
     private final SearchDependencyHealthMonitor healthMonitor;
+    private final AiOperationalMetrics metrics;
 
     public HybridPostRetriever(PostRetrievalService sqlRetriever, ElasticsearchPostIndexClient indexClient,
                                EmbeddingClient embeddingClient, PostMapper postMapper, SearchProperties properties,
                                SearchDependencyHealthMonitor healthMonitor) {
+        this(sqlRetriever, indexClient, embeddingClient, postMapper, properties, healthMonitor, AiOperationalMetrics.noOp());
+    }
+
+    @Autowired
+    public HybridPostRetriever(PostRetrievalService sqlRetriever, ElasticsearchPostIndexClient indexClient,
+                               EmbeddingClient embeddingClient, PostMapper postMapper, SearchProperties properties,
+                               SearchDependencyHealthMonitor healthMonitor, AiOperationalMetrics metrics) {
         this.sqlRetriever = sqlRetriever;
         this.indexClient = indexClient;
         this.embeddingClient = embeddingClient;
         this.postMapper = postMapper;
         this.properties = properties;
         this.healthMonitor = healthMonitor;
+        this.metrics = metrics;
     }
 
     @Override
@@ -64,6 +74,7 @@ public class HybridPostRetriever implements PostRetriever {
                             + "keywordTopIds={} vectorTopIds={} elapsedMs={}",
                     AiRequestContext.requestId(), !keywordRanks.isEmpty(), !vectorRanks.isEmpty(), keywordRanks,
                     vectorRanks, System.currentTimeMillis() - startedAt);
+            metrics.recordRetrieval("sql-fallback", System.currentTimeMillis() - startedAt);
             return sqlRetriever.retrieve(query);
         }
 
@@ -71,6 +82,7 @@ public class HybridPostRetriever implements PostRetriever {
         log.info("retrieval requestId={} path={} keywordTopIds={} vectorTopIds={} rrfScores={} resultIds={} elapsedMs={}",
                 AiRequestContext.requestId(), retrievalPath(keywordRanks, vectorRanks), keywordRanks, vectorRanks,
                 fusion.scores(), fusion.postIds(), System.currentTimeMillis() - startedAt);
+        metrics.recordRetrieval(retrievalPath(keywordRanks, vectorRanks), System.currentTimeMillis() - startedAt);
         return posts.stream().map(RetrievedPost::from).toList();
     }
 

@@ -2,6 +2,7 @@ package com.uninook.ai;
 
 import com.uninook.common.ErrorCode;
 import com.uninook.exception.BusinessException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,33 +20,74 @@ public class AgentOrchestrator {
     private final ToolRegistry toolRegistry;
     private final ToolCallExecutor toolCallExecutor;
     private final AiProperties properties;
+    private final AiOperationalMetrics metrics;
 
     public AgentOrchestrator(AiModelClient aiModelClient, ToolRegistry toolRegistry,
                              ToolCallExecutor toolCallExecutor, AiProperties properties) {
+        this(aiModelClient, toolRegistry, toolCallExecutor, properties, AiOperationalMetrics.noOp());
+    }
+
+    @Autowired
+    public AgentOrchestrator(AiModelClient aiModelClient, ToolRegistry toolRegistry,
+                             ToolCallExecutor toolCallExecutor, AiProperties properties,
+                             AiOperationalMetrics metrics) {
         this.aiModelClient = aiModelClient;
         this.toolRegistry = toolRegistry;
         this.toolCallExecutor = toolCallExecutor;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     public AgentResult run(List<ChatMessage> initialMessages, ToolExecutionContext context) {
+        return executeLoop(initialMessages, context).result();
+    }
+
+    /**
+     * Resolves tools before opening the final model stream. If the planner can answer without a tool,
+     * its answer is returned immediately to avoid a second model invocation.
+     */
+    public AgentStreamingPlan prepareForStreaming(List<ChatMessage> initialMessages, ToolExecutionContext context) {
+        AgentLoopResult loopResult = executeLoop(initialMessages, context);
+        if (loopResult.result().pendingConfirmation() || !loopResult.executedTool()) {
+            return AgentStreamingPlan.immediate(loopResult.result());
+        }
+        log.info("assistant requestId={} stage=agent status=stream-ready references={}",
+                AiRequestContext.requestId(), loopResult.result().references().size());
+        return AgentStreamingPlan.stream(loopResult.messages(), loopResult.result().references());
+    }
+
+    private AgentLoopResult executeLoop(List<ChatMessage> initialMessages, ToolExecutionContext context) {
         List<ChatMessage> messages = new ArrayList<>(initialMessages);
         List<AiPostReference> references = new ArrayList<>();
         int validationFailures = 0;
         String previousFingerprint = null;
         int consecutiveRepeatCount = 0;
         boolean toolCallsDisabled = false;
+        boolean executedTool = false;
         log.info("assistant requestId={} stage=agent status=started messages={} tools={}",
                 AiRequestContext.requestId(), messages.size(), toolRegistry.definitions().size());
         for (int step = 0; step < properties.getAgentMaxSteps(); step++) {
-            AgentModelResponse modelResponse = aiModelClient.generateWithTools(messages, toolRegistry.definitions());
+            long modelStartedAt = System.currentTimeMillis();
+            AgentModelResponse modelResponse;
+            try {
+                modelResponse = aiModelClient.generateWithTools(messages, toolRegistry.definitions());
+            } catch (BusinessException exception) {
+                metrics.recordModelCall("tools", "failed", System.currentTimeMillis() - modelStartedAt, null, null);
+                throw exception;
+            }
+            metrics.recordModelCall("tools", "success", System.currentTimeMillis() - modelStartedAt,
+                    modelResponse.inputTokens(), modelResponse.outputTokens());
+            log.info("assistant requestId={} stage=agent-model step={} inputTokens={} outputTokens={} toolCalls={}",
+                    AiRequestContext.requestId(), step + 1, modelResponse.inputTokens(), modelResponse.outputTokens(),
+                    modelResponse.toolCalls().size());
             if (modelResponse.isFinalAnswer()) {
                 if (modelResponse.content().isBlank()) {
                     throw new BusinessException(ErrorCode.INTERNAL_ERROR, "智能问答服务未返回有效内容");
                 }
                 log.info("assistant requestId={} stage=agent status=final step={} references={}",
                         AiRequestContext.requestId(), step + 1, references.size());
-                return AgentResult.answer(modelResponse.content(), modelResponse.requestId(), references);
+                return new AgentLoopResult(AgentResult.answer(modelResponse.content(), modelResponse.requestId(), references),
+                        messages, executedTool);
             }
             messages.add(new ChatMessage(ChatMessage.Role.ASSISTANT, modelResponse.content(), null, modelResponse.toolCalls()));
             for (ToolCall toolCall : modelResponse.toolCalls()) {
@@ -70,11 +112,14 @@ public class AgentOrchestrator {
                 }
                 try {
                     ToolExecutionResult result = toolCallExecutor.execute(toolCall, context);
+                    executedTool = true;
                     references.addAll(result.references());
                     if (result.pendingConfirmation()) {
                         log.info("assistant requestId={} stage=tool step={} tool={} status=pending-confirmation",
                                 AiRequestContext.requestId(), step + 1, toolCall.name());
-                        return AgentResult.pendingConfirmation(result.content(), modelResponse.requestId(), references);
+                        return new AgentLoopResult(
+                                AgentResult.pendingConfirmation(result.content(), modelResponse.requestId(), references),
+                                messages, executedTool);
                     }
                     log.info("assistant requestId={} stage=tool step={} tool={} status=completed references={}",
                             AiRequestContext.requestId(), step + 1, toolCall.name(), result.references().size());
@@ -91,6 +136,11 @@ public class AgentOrchestrator {
                 }
             }
         }
-        return AgentResult.answer("已达到本次查询的最大执行步数，请根据当前已获得的信息调整问题后重试。", null, references);
+        return new AgentLoopResult(AgentResult.answer(
+                "已达到本次查询的最大执行步数，请根据当前已获得的信息调整问题后重试。", null, references),
+                messages, executedTool);
+    }
+
+    private record AgentLoopResult(AgentResult result, List<ChatMessage> messages, boolean executedTool) {
     }
 }
