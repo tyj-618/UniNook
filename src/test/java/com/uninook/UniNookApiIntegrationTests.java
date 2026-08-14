@@ -266,6 +266,38 @@ class UniNookApiIntegrationTests {
     }
 
     @Test
+    void pendingPostDraftCreatesNothingUntilItIsConfirmed() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String username = "pending_post_" + suffix;
+        String title = "Pending post " + suffix;
+        register(username, "123456", "Pending Post User");
+        String token = login(username, "123456");
+
+        JsonNode draft = post("/api/ai/assistant/ask", token, Map.of(
+                "question", "帮我发布一条帖子，标题是“" + title + "”，内容是“仅用于确认流程测试”。",
+                "radiusKm", 10
+        ));
+
+        assertThat(draft.at("/code").asInt()).isZero();
+        String actionId = draft.at("/data/pendingAction/actionId").asText();
+        assertThat(actionId).isNotBlank();
+        assertThat(draft.at("/data/pendingAction/type").asText()).isEqualTo("CREATE_POST");
+
+        JsonNode confirmed = post("/api/ai/pending-actions/" + actionId + "/confirm", token, Map.of(
+                "categoryId", firstCategoryId()
+        ));
+        assertThat(confirmed.at("/code").asInt()).isZero();
+        Long postId = confirmed.at("/data/postId").asLong();
+        assertThat(postId).isPositive();
+        assertThat(get("/api/posts/" + postId + "?radiusKm=10", token).at("/data/title").asText()).isEqualTo(title);
+
+        JsonNode repeatedConfirmation = post("/api/ai/pending-actions/" + actionId + "/confirm", token, Map.of(
+                "categoryId", firstCategoryId()
+        ));
+        assertCode(repeatedConfirmation, 40400);
+    }
+
+    @Test
     void directPostInteractionsAllowPostsOutsideRecommendationScope() throws Exception {
         String suffix = String.valueOf(System.nanoTime());
         String localUsername = "local_" + suffix;

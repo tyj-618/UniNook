@@ -1,6 +1,8 @@
 package com.uninook.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uninook.auth.CurrentUserService;
+import com.uninook.post.PostService;
 import com.uninook.school.CampusScope;
 import com.uninook.user.UserProfile;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +13,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class AgentOrchestratorTests {
 
@@ -192,7 +195,8 @@ class AgentOrchestratorTests {
     void preparesPostDraftWithoutCallingTheBusinessWriteOperation() {
         AiProperties properties = new AiProperties();
         InMemoryPendingActionStore pendingActionStore = new InMemoryPendingActionStore();
-        PendingActionService pendingActionService = new PendingActionService(pendingActionStore, properties);
+        PendingActionService pendingActionService = new PendingActionService(pendingActionStore, properties,
+                mock(CurrentUserService.class), mock(PostService.class));
         PreparePostTool postTool = new PreparePostTool(pendingActionService);
         ToolCallExecutor executor = new ToolCallExecutor(new ToolRegistry(List.of(postTool)),
                 new ToolSecurityValidator(new ObjectMapper()));

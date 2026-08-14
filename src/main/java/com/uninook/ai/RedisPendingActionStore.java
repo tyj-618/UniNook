@@ -39,7 +39,20 @@ public class RedisPendingActionStore implements PendingActionStore {
 
     @Override
     public Optional<PendingAction> load(Long userId, String actionId) {
-        String payload = stringRedisTemplate.opsForValue().get(key(userId, actionId));
+        return deserialize(userId, actionId, stringRedisTemplate.opsForValue().get(key(userId, actionId)));
+    }
+
+    @Override
+    public Optional<PendingAction> take(Long userId, String actionId) {
+        return deserialize(userId, actionId, stringRedisTemplate.opsForValue().getAndDelete(key(userId, actionId)));
+    }
+
+    @Override
+    public void delete(Long userId, String actionId) {
+        stringRedisTemplate.delete(key(userId, actionId));
+    }
+
+    private Optional<PendingAction> deserialize(Long userId, String actionId, String payload) {
         if (payload == null || payload.isBlank()) {
             return Optional.empty();
         }

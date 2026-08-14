@@ -10,4 +10,8 @@ public interface PendingActionStore {
     void save(PendingAction action);
 
     Optional<PendingAction> load(Long userId, String actionId);
+
+    Optional<PendingAction> take(Long userId, String actionId);
+
+    void delete(Long userId, String actionId);
 }

@@ -22,7 +22,21 @@ public class InMemoryPendingActionStore implements PendingActionStore {
     @Override
     public Optional<PendingAction> load(Long userId, String actionId) {
         String key = key(userId, actionId);
-        PendingAction action = actions.get(key);
+        return available(userId, key, actions.get(key));
+    }
+
+    @Override
+    public Optional<PendingAction> take(Long userId, String actionId) {
+        String key = key(userId, actionId);
+        return available(userId, key, actions.remove(key));
+    }
+
+    @Override
+    public void delete(Long userId, String actionId) {
+        actions.remove(key(userId, actionId));
+    }
+
+    private Optional<PendingAction> available(Long userId, String key, PendingAction action) {
         if (action == null) {
             return Optional.empty();
         }
