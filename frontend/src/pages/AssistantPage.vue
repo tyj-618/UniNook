@@ -23,6 +23,8 @@ interface ConversationTurn {
   pendingActionError: string
   requestId: string | null
   feedbackRating: AssistantFeedbackRating | null
+  feedbackMessage: string
+  feedbackError: string
 }
 
 const legacySessionStorageKey = 'uninook-assistant-session-id'
@@ -65,6 +67,8 @@ async function submit(): Promise<void> {
     pendingActionError: '',
     requestId: null,
     feedbackRating: null,
+    feedbackMessage: '',
+    feedbackError: '',
   }
   conversation.value.push(turn)
   question.value = ''
@@ -81,6 +85,8 @@ async function refreshTurn(turn: ConversationTurn): Promise<void> {
   turn.status = 'streaming'
   turn.requestId = null
   turn.feedbackRating = null
+  turn.feedbackMessage = ''
+  turn.feedbackError = ''
   await requestAnswer(turn)
 }
 
@@ -129,12 +135,16 @@ function applyStreamMetadata(turn: ConversationTurn, metadata: AiAssistantStream
 async function submitFeedback(turn: ConversationTurn, rating: AssistantFeedbackRating): Promise<void> {
   if (!turn.requestId || feedbackSubmittingTurnId.value) return
   feedbackSubmittingTurnId.value = turn.id
+  turn.feedbackMessage = ''
+  turn.feedbackError = ''
   try {
     await submitAssistantFeedback(turn.requestId, rating, turn.question)
     turn.feedbackRating = rating
+    turn.feedbackMessage = rating === 'HELPFUL' ? '已记录“有帮助”，感谢你的反馈。' : '已记录“没帮助”，我们会据此改进。'
     saveConversation()
   } catch (error) {
-    errorMessage.value = errorMessageOf(error, '反馈提交失败，请稍后重试。')
+    turn.feedbackError = errorMessageOf(error, '反馈提交失败，请稍后重试。')
+    saveConversation()
   } finally {
     feedbackSubmittingTurnId.value = null
   }
@@ -144,6 +154,8 @@ function finishTurn(turn: ConversationTurn, response: AiAssistantResponse): void
   turn.answer = response.answer
   turn.requestId = response.requestId
   turn.feedbackRating = null
+  turn.feedbackMessage = ''
+  turn.feedbackError = ''
   turn.references = response.references
   turn.insufficientEvidence = response.insufficientEvidence
   turn.status = 'completed'
@@ -258,6 +270,8 @@ function loadConversation(): ConversationTurn[] {
       pendingActionError: typeof turn.pendingActionError === 'string' ? turn.pendingActionError : '',
       requestId: typeof turn.requestId === 'string' ? turn.requestId : null,
       feedbackRating: turn.feedbackRating === 'HELPFUL' || turn.feedbackRating === 'UNHELPFUL' ? turn.feedbackRating : null,
+      feedbackMessage: typeof turn.feedbackMessage === 'string' ? turn.feedbackMessage : '',
+      feedbackError: typeof turn.feedbackError === 'string' ? turn.feedbackError : '',
     }))
     localStorage.setItem(conversationStorageKey(), JSON.stringify(restored))
     return restored
@@ -380,6 +394,20 @@ function scopeLabel(value: CampusScope): string {
           <p v-if="turn.insufficientEvidence && turn.answer !== insufficientEvidenceMessage" class="muted">
             {{ insufficientEvidenceMessage }}
           </p>
+          <div v-if="turn.status === 'completed' && turn.requestId" class="assistant-feedback">
+            <span>这条回答有帮助吗？</span>
+            <button type="button" class="text-button" :class="{ active: turn.feedbackRating === 'HELPFUL' }"
+              :aria-pressed="turn.feedbackRating === 'HELPFUL'" :disabled="feedbackSubmittingTurnId === turn.id" @click="submitFeedback(turn, 'HELPFUL')">
+              <ThumbsUp :size="15" />有帮助
+            </button>
+            <button type="button" class="text-button" :class="{ active: turn.feedbackRating === 'UNHELPFUL' }"
+              :aria-pressed="turn.feedbackRating === 'UNHELPFUL'" :disabled="feedbackSubmittingTurnId === turn.id" @click="submitFeedback(turn, 'UNHELPFUL')">
+              <ThumbsDown :size="15" />没帮助
+            </button>
+            <span v-if="feedbackSubmittingTurnId === turn.id" class="assistant-feedback__status" role="status">正在提交…</span>
+            <span v-else-if="turn.feedbackMessage" class="assistant-feedback__status" role="status">{{ turn.feedbackMessage }}</span>
+          </div>
+          <p v-if="turn.feedbackError" class="assistant-feedback__error"><CircleAlert :size="15" />{{ turn.feedbackError }}</p>
           <div v-if="turn.references.length" class="assistant-references">
             <h2>参考帖子</h2>
             <RouterLink v-for="reference in turn.references" :key="reference.postId" class="reference-item"
@@ -387,17 +415,6 @@ function scopeLabel(value: CampusScope): string {
               <strong>{{ reference.title }}</strong>
               <span>{{ reference.schoolName }} · {{ reference.excerpt }}</span>
             </RouterLink>
-          </div>
-          <div v-if="turn.status === 'completed' && turn.requestId" class="assistant-feedback">
-            <span>这条回答有帮助吗？</span>
-            <button type="button" class="text-button" :class="{ active: turn.feedbackRating === 'HELPFUL' }"
-              :disabled="feedbackSubmittingTurnId === turn.id" @click="submitFeedback(turn, 'HELPFUL')">
-              <ThumbsUp :size="15" />有帮助
-            </button>
-            <button type="button" class="text-button" :class="{ active: turn.feedbackRating === 'UNHELPFUL' }"
-              :disabled="feedbackSubmittingTurnId === turn.id" @click="submitFeedback(turn, 'UNHELPFUL')">
-              <ThumbsDown :size="15" />没帮助
-            </button>
           </div>
           <section v-if="turn.pendingAction?.type === 'CREATE_POST'" class="assistant-pending-post">
             <template v-if="turn.pendingActionStatus === 'pending' || turn.pendingActionStatus === 'confirming'">
@@ -461,6 +478,7 @@ function scopeLabel(value: CampusScope): string {
 .assistant-feedback {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.45rem;
   margin-top: 1rem;
   color: var(--muted);
@@ -469,5 +487,19 @@ function scopeLabel(value: CampusScope): string {
 
 .assistant-feedback .active {
   color: var(--accent);
+}
+
+.assistant-feedback__status {
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
+.assistant-feedback__error {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0;
+  color: var(--danger);
+  font-size: 0.88rem;
 }
 </style>
