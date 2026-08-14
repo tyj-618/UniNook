@@ -332,7 +332,10 @@ h2 { color: #17241f; font-size: 20px; line-height: 1.35; letter-spacing: 0; }
 .assistant-message { max-width: min(100%, 680px); padding: 16px 18px; border: 1px solid #dce4df; border-radius: 12px; line-height: 1.7; }
 .assistant-message p { margin: 0; white-space: pre-wrap; }
 .assistant-message--user { justify-self: end; background: #eaf5f1; border-color: #b9d9cf; }
-.assistant-message--assistant { background: #ffffff; }
+.assistant-message--assistant { position: relative; padding-right: 92px; background: #ffffff; }
+.assistant-turn__refresh { position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: #0e7667; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.assistant-turn__refresh:hover { background: #edf8f4; }
+.assistant-turn__refresh:disabled { color: #9aaba3; cursor: not-allowed; }
 .assistant-message__meta { margin-bottom: 6px !important; color: #6d8178; font-size: 13px; font-weight: 700; }
 .assistant-references { display: grid; gap: 2px; margin-top: 16px; }
 .assistant-references h2 { margin: 0 0 2px; font-size: 17px; }

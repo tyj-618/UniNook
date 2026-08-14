@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleAlert, Send, Trash2 } from '@lucide/vue'
+import { CircleAlert, RefreshCw, Send, Trash2 } from '@lucide/vue'
 import { ref, watch } from 'vue'
 import { authStore } from '../auth/auth.ts'
 import { streamAssistant } from '../api/assistant.ts'
@@ -43,13 +43,27 @@ async function submit(): Promise<void> {
   }
   conversation.value.push(turn)
   question.value = ''
+  await requestAnswer(turn)
+}
+
+async function refreshTurn(turn: ConversationTurn): Promise<void> {
+  if (isSubmitting.value) return
+
+  turn.answer = ''
+  turn.references = []
+  turn.insufficientEvidence = false
+  turn.status = 'streaming'
+  await requestAnswer(turn)
+}
+
+async function requestAnswer(turn: ConversationTurn): Promise<void> {
   isSubmitting.value = true
   errorMessage.value = ''
 
   const controller = new AbortController()
   abortController.value = controller
   try {
-    await streamAssistant(trimmedQuestion, turn.scope, sessionId.value, {
+    await streamAssistant(turn.question, turn.scope, sessionId.value, {
       onChunk: (chunk) => {
         turn.answer += chunk
       },
@@ -198,6 +212,10 @@ function scopeLabel(value: CampusScope): string {
           <p>{{ turn.question }}</p>
         </div>
         <div class="assistant-message assistant-message--assistant">
+          <button v-if="turn.status === 'cancelled' || turn.status === 'failed'" type="button" class="assistant-turn__refresh"
+            :disabled="isSubmitting" @click="refreshTurn(turn)">
+            <RefreshCw :size="14" />刷新
+          </button>
           <p class="assistant-message__meta">校园助手</p>
           <p>{{ turn.answer || '正在生成回答…' }}</p>
           <p v-if="turn.status === 'cancelled'" class="muted">已停止生成，以上为已收到的内容。</p>
