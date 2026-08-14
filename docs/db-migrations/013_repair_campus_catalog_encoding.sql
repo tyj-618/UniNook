@@ -68,7 +68,7 @@ SELECT u.id, CONVERT(0xE58D97E4BAACE5A4A7E5ADA6 USING utf8mb4),
 FROM university u
 WHERE u.id = 1 AND NOT EXISTS (
     SELECT 1 FROM school s WHERE s.university_id = u.id
-    AND s.campus_name = CONVERT(0xE4BB99E69E97E6A0A1E58CBA USING utf8mb4) AND s.status = 0
+    AND s.campus_name = (CONVERT(0xE4BB99E69E97E6A0A1E58CBA USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND s.status = 0
 );
 
 INSERT INTO school (university_id, name, campus_name, province, city, latitude, longitude, status)
@@ -79,7 +79,7 @@ SELECT u.id, CONVERT(0xE58D97E4BAACE5A4A7E5ADA6 USING utf8mb4),
 FROM university u
 WHERE u.id = 1 AND NOT EXISTS (
     SELECT 1 FROM school s WHERE s.university_id = u.id
-    AND s.campus_name = CONVERT(0xE9BC93E6A5BCE6A0A1E58CBA USING utf8mb4) AND s.status = 0
+    AND s.campus_name = (CONVERT(0xE9BC93E6A5BCE6A0A1E58CBA USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND s.status = 0
 );
 
 INSERT INTO school (university_id, name, campus_name, province, city, latitude, longitude, status)
@@ -90,7 +90,7 @@ SELECT u.id, CONVERT(0xE4B89CE58D97E5A4A7E5ADA6 USING utf8mb4),
 FROM university u
 WHERE u.id = 2 AND NOT EXISTS (
     SELECT 1 FROM school s WHERE s.university_id = u.id
-    AND s.campus_name = CONVERT(0xE4B99DE9BE99E6B996E6A0A1E58CBA USING utf8mb4) AND s.status = 0
+    AND s.campus_name = (CONVERT(0xE4B99DE9BE99E6B996E6A0A1E58CBA USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND s.status = 0
 );
 
 INSERT INTO school (university_id, name, campus_name, province, city, latitude, longitude, status)
@@ -101,7 +101,7 @@ SELECT u.id, CONVERT(0xE4B89CE58D97E5A4A7E5ADA6 USING utf8mb4),
 FROM university u
 WHERE u.id = 2 AND NOT EXISTS (
     SELECT 1 FROM school s WHERE s.university_id = u.id
-    AND s.campus_name = CONVERT(0xE59B9BE7898CE6A5BCE6A0A1E58CBA USING utf8mb4) AND s.status = 0
+    AND s.campus_name = (CONVERT(0xE59B9BE7898CE6A5BCE6A0A1E58CBA USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND s.status = 0
 );
 
 INSERT INTO school (university_id, name, campus_name, province, city, latitude, longitude, status)
@@ -112,7 +112,7 @@ SELECT u.id, CONVERT(0xE58D97E4BAACE888AAE7A9BAE888AAE5A4A9E5A4A7E5ADA6 USING ut
 FROM university u
 WHERE u.id = 3 AND NOT EXISTS (
     SELECT 1 FROM school s WHERE s.university_id = u.id
-    AND s.campus_name = CONVERT(0xE5B086E5869BE8B7AFE6A0A1E58CBA USING utf8mb4) AND s.status = 0
+    AND s.campus_name = (CONVERT(0xE5B086E5869BE8B7AFE6A0A1E58CBA USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND s.status = 0
 );
 
 INSERT INTO school (university_id, name, campus_name, province, city, latitude, longitude, status)
@@ -123,7 +123,7 @@ SELECT u.id, CONVERT(0xE5A48DE697A6E5A4A7E5ADA6 USING utf8mb4),
 FROM university u
 WHERE u.id = 4 AND NOT EXISTS (
     SELECT 1 FROM school s WHERE s.university_id = u.id
-    AND s.campus_name = CONVERT(0xE982AFE983B8E6A0A1E58CBA USING utf8mb4) AND s.status = 0
+    AND s.campus_name = (CONVERT(0xE982AFE983B8E6A0A1E58CBA USING utf8mb4) COLLATE utf8mb4_unicode_ci) AND s.status = 0
 );
 
 COMMIT;
