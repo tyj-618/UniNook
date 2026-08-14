@@ -223,10 +223,28 @@ public class AgentOrchestrator {
                 ? "campus information"
                 : userQuestions.get(userQuestions.size() - 1);
         String keyword = latestQuestion;
-        if (isContextualFollowUp(latestQuestion) && userQuestions.size() >= 2) {
-            keyword = userQuestions.get(userQuestions.size() - 2) + " " + latestQuestion;
+        if (isContextualFollowUp(latestQuestion)) {
+            String topicQuestion = findLatestTopicQuestion(userQuestions);
+            if (!topicQuestion.isBlank()) {
+                keyword = topicQuestion + " " + latestQuestion;
+            }
         }
         return keyword;
+    }
+
+    /**
+     * Keeps an omitted follow-up anchored to the latest complete user question instead of to an
+     * earlier omitted follow-up. For example, “那工作日呢？” should still search around
+     * “九龙湖校区自习室开放吗？”, even after the user has already asked “那周末呢？”.
+     */
+    private String findLatestTopicQuestion(List<String> userQuestions) {
+        for (int index = userQuestions.size() - 2; index >= 0; index--) {
+            String question = userQuestions.get(index);
+            if (!isContextualFollowUp(question)) {
+                return question;
+            }
+        }
+        return "";
     }
 
     private String latestUserQuestion(List<ChatMessage> messages) {

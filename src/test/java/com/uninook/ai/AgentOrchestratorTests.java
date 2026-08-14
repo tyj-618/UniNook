@@ -82,6 +82,24 @@ class AgentOrchestratorTests {
     }
 
     @Test
+    void keepsTheOriginalTopicForMultipleContextualFollowUps() {
+        CapturingReadTool tool = new CapturingReadTool("search_posts");
+        modelClient.scriptToolResponses(finalAnswer(), finalAnswer());
+        List<ChatMessage> conversation = List.of(
+                new ChatMessage(ChatMessage.Role.USER, "九龙湖校区自习室开放吗？"),
+                new ChatMessage(ChatMessage.Role.ASSISTANT, "自习室已开放。"),
+                new ChatMessage(ChatMessage.Role.USER, "那周末呢？"),
+                new ChatMessage(ChatMessage.Role.ASSISTANT, "周末开放至 22:00。"),
+                new ChatMessage(ChatMessage.Role.USER, "<question>那工作日呢？</question>"));
+
+        AgentResult result = orchestrator(tool).run(conversation, context);
+
+        assertThat(tool.arguments.get("keyword"))
+                .isEqualTo("九龙湖校区自习室开放吗？ 那工作日呢？");
+        assertThat(result.references()).hasSize(1);
+    }
+
+    @Test
     void enrichesAnExplicitSearchToolCallForAContextualFollowUp() {
         CapturingReadTool tool = new CapturingReadTool("search_posts");
         modelClient.scriptToolResponses(
