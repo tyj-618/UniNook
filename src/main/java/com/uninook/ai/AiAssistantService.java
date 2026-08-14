@@ -27,11 +27,14 @@ public class AiAssistantService {
     private final PromptBuilder promptBuilder;
     private final AiModelClient aiModelClient;
     private final AiRequestRateLimiter aiRequestRateLimiter;
+    private final ChatSessionStore chatSessionStore;
+    private final ChatContextCompressor chatContextCompressor;
 
     public AiAssistantService(CurrentUserService currentUserService, UserMapper userMapper,
                               SchoolService schoolService, PostRetriever postRetriever,
                               PromptBuilder promptBuilder, AiModelClient aiModelClient,
-                              AiRequestRateLimiter aiRequestRateLimiter) {
+                              AiRequestRateLimiter aiRequestRateLimiter, ChatSessionStore chatSessionStore,
+                              ChatContextCompressor chatContextCompressor) {
         this.currentUserService = currentUserService;
         this.userMapper = userMapper;
         this.schoolService = schoolService;
@@ -39,6 +42,8 @@ public class AiAssistantService {
         this.promptBuilder = promptBuilder;
         this.aiModelClient = aiModelClient;
         this.aiRequestRateLimiter = aiRequestRateLimiter;
+        this.chatSessionStore = chatSessionStore;
+        this.chatContextCompressor = chatContextCompressor;
     }
 
     public AiAssistantResponse ask(String authorization, AiAssistantRequest request) {
@@ -51,13 +56,16 @@ public class AiAssistantService {
         List<Long> allowedSchoolIds = schoolService.listScopeSchoolIds(user.schoolId(), scope);
         List<RetrievedPost> posts = postRetriever.retrieve(
                 new RetrievalQuery(request.question(), allowedSchoolIds, RETRIEVAL_LIMIT));
+        List<ChatMessage> history = loadHistory(userId, request.sessionId());
         if (posts.isEmpty()) {
-            return new AiAssistantResponse(
+            AiAssistantResponse response = new AiAssistantResponse(
                     "在当前查看范围内暂未找到相关校园帖子。",
                     List.of(), true, UUID.randomUUID().toString());
+            saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
+            return response;
         }
 
-        AiModelResult result = aiModelClient.generate(promptBuilder.build(request.question(), posts));
+        AiModelResult result = aiModelClient.generate(promptBuilder.build(request.question(), posts, history));
         Map<Long, RetrievedPost> postsById = posts.stream()
                 .collect(Collectors.toMap(RetrievedPost::id, Function.identity()));
         Set<Long> validPostIds = result.citedPostIds().stream()
@@ -68,10 +76,30 @@ public class AiAssistantService {
                 .map(AiPostReference::from)
                 .toList();
 
-        return new AiAssistantResponse(
+        AiAssistantResponse response = new AiAssistantResponse(
                 result.answer(),
                 references,
                 result.insufficientEvidence() || references.isEmpty(),
                 result.requestId());
+        saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
+        return response;
+    }
+
+    private List<ChatMessage> loadHistory(Long userId, String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return List.of();
+        }
+        return chatContextCompressor.compress(chatSessionStore.load(userId, sessionId));
+    }
+
+    private void saveHistory(Long userId, String sessionId, List<ChatMessage> history,
+                             String question, String answer) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        List<ChatMessage> updated = new java.util.ArrayList<>(history);
+        updated.add(new ChatMessage(ChatMessage.Role.USER, question));
+        updated.add(new ChatMessage(ChatMessage.Role.ASSISTANT, answer));
+        chatSessionStore.save(userId, sessionId, chatContextCompressor.compress(updated));
     }
 }

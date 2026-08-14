@@ -49,7 +49,7 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
     }
 
     @Override
-    public AiModelResult generate(AiModelRequest request) {
+    public AiModelResult generate(List<ChatMessage> messages) {
         ensureConfigured();
         long startedAt = System.currentTimeMillis();
         for (int attempt = 0; attempt <= properties.getMaxRetries(); attempt++) {
@@ -58,7 +58,7 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
                         .uri("/chat/completions")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(buildRequestBody(request))
+                        .body(buildRequestBody(messages))
                         .retrieve()
                         .body(String.class);
 
@@ -135,12 +135,15 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
     }
 
     Map<String, Object> buildRequestBody(AiModelRequest request) {
+        return buildRequestBody(request.messages());
+    }
+
+    Map<String, Object> buildRequestBody(List<ChatMessage> messages) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", properties.getModel());
-        body.put("messages", List.of(
-                Map.of("role", "system", "content", request.systemPrompt()),
-                Map.of("role", "user", "content", request.userPrompt())
-        ));
+        body.put("messages", messages.stream()
+                .map(message -> Map.of("role", message.providerRole(), "content", message.content()))
+                .toList());
         body.put("temperature", 0.2);
         if (properties.isStructuredOutput()) {
             body.put("response_format", Map.of("type", "json_object"));

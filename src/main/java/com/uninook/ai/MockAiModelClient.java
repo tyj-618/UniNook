@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -13,10 +14,18 @@ import java.util.regex.Pattern;
 public class MockAiModelClient implements AiModelClient {
 
     private static final Pattern POST_ID_PATTERN = Pattern.compile("postId: (\\d+)");
+    private final AtomicReference<List<ChatMessage>> lastGeneratedMessages = new AtomicReference<>(List.of());
 
     @Override
-    public AiModelResult generate(AiModelRequest request) {
-        Matcher matcher = POST_ID_PATTERN.matcher(request.userPrompt());
+    public AiModelResult generate(List<ChatMessage> messages) {
+        List<ChatMessage> copiedMessages = List.copyOf(messages);
+        lastGeneratedMessages.set(copiedMessages);
+        String currentUserPrompt = copiedMessages.stream()
+                .filter(message -> message.role() == ChatMessage.Role.USER)
+                .reduce((ignored, latest) -> latest)
+                .map(ChatMessage::content)
+                .orElse("");
+        Matcher matcher = POST_ID_PATTERN.matcher(currentUserPrompt);
         List<Long> postIds = matcher.results()
                 .map(match -> Long.parseLong(match.group(1)))
                 .limit(3)
@@ -29,6 +38,10 @@ public class MockAiModelClient implements AiModelClient {
                 0,
                 0
         );
+    }
+
+    List<ChatMessage> lastGeneratedMessages() {
+        return lastGeneratedMessages.get();
     }
 
     @Override

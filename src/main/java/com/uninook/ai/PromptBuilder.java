@@ -17,6 +17,10 @@ public class PromptBuilder {
             """;
 
     public AiModelRequest build(String question, List<RetrievedPost> posts) {
+        return build(question, posts, List.of());
+    }
+
+    public AiModelRequest build(String question, List<RetrievedPost> posts, List<ChatMessage> history) {
         String references = posts.stream().map(this::formatPost).collect(Collectors.joining("\n"));
         String userPrompt = """
                 <references>
@@ -30,7 +34,13 @@ public class PromptBuilder {
                 Return exactly this JSON shape:
                 {"answer":"...","citedPostIds":[1],"insufficientEvidence":false}
                 """.formatted(references, question.trim());
-        return new AiModelRequest(SYSTEM_PROMPT, userPrompt);
+        List<ChatMessage> messages = new java.util.ArrayList<>();
+        messages.add(new ChatMessage(ChatMessage.Role.SYSTEM, SYSTEM_PROMPT));
+        if (history != null) {
+            messages.addAll(history);
+        }
+        messages.add(new ChatMessage(ChatMessage.Role.USER, userPrompt));
+        return new AiModelRequest(SYSTEM_PROMPT, userPrompt, messages);
     }
 
     private String formatPost(RetrievedPost post) {

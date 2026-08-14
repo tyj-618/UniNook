@@ -13,6 +13,8 @@ public class AiProperties {
     private int maxRetries = 1;
     private int maxRequestsPerMinute = 5;
     private int maxOutputTokens = 600;
+    private int chatSessionTtlSeconds = 1800;
+    private int chatSessionMaxMessages = 12;
     private boolean structuredOutput;
     private Boolean enableThinking;
 
@@ -78,6 +80,22 @@ public class AiProperties {
 
     public void setMaxOutputTokens(int maxOutputTokens) {
         this.maxOutputTokens = maxOutputTokens;
+    }
+
+    public int getChatSessionTtlSeconds() {
+        return chatSessionTtlSeconds;
+    }
+
+    public void setChatSessionTtlSeconds(int chatSessionTtlSeconds) {
+        this.chatSessionTtlSeconds = chatSessionTtlSeconds;
+    }
+
+    public int getChatSessionMaxMessages() {
+        return chatSessionMaxMessages;
+    }
+
+    public void setChatSessionMaxMessages(int chatSessionMaxMessages) {
+        this.chatSessionMaxMessages = chatSessionMaxMessages;
     }
 
     public boolean isStructuredOutput() {

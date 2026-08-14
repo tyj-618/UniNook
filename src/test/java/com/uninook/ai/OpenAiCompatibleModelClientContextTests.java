@@ -6,6 +6,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,5 +35,26 @@ class OpenAiCompatibleModelClientContextTests {
         assertThat(requestBody).containsEntry("response_format", Map.of("type", "json_object"));
         assertThat(requestBody).containsEntry("enable_thinking", false);
         assertThat(requestBody).doesNotContainKey("max_tokens");
+    }
+
+    @Test
+    void keepsCompleteConversationMessageListInProviderRequest() {
+        AiProperties properties = new AiProperties();
+        properties.setModel("test-model");
+        OpenAiCompatibleModelClient client = new OpenAiCompatibleModelClient(properties);
+
+        Map<String, Object> requestBody = client.buildRequestBody(List.of(
+                new ChatMessage(ChatMessage.Role.SYSTEM, "system"),
+                new ChatMessage(ChatMessage.Role.USER, "first question"),
+                new ChatMessage(ChatMessage.Role.ASSISTANT, "first answer"),
+                new ChatMessage(ChatMessage.Role.USER, "second question")
+        ));
+
+        assertThat(requestBody.get("messages")).isEqualTo(List.of(
+                Map.of("role", "system", "content", "system"),
+                Map.of("role", "user", "content", "first question"),
+                Map.of("role", "assistant", "content", "first answer"),
+                Map.of("role", "user", "content", "second question")
+        ));
     }
 }
