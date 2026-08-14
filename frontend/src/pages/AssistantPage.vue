@@ -18,6 +18,7 @@ interface ConversationTurn {
 }
 
 const legacySessionStorageKey = 'uninook-assistant-session-id'
+const insufficientEvidenceMessage = '当前范围内没有足够的帖子可作为可靠依据。'
 const question = ref('')
 const conversation = ref<ConversationTurn[]>(loadConversation())
 const scope = ref<CampusScope>(conversation.value.at(-1)?.scope ?? 'NEARBY_10')
@@ -234,7 +235,9 @@ function scopeLabel(value: CampusScope): string {
           <p>{{ turn.answer || '正在生成回答…' }}</p>
           <p v-if="turn.status === 'cancelled'" class="muted">已停止生成，以上为已收到的内容。</p>
           <p v-if="turn.status === 'failed'" class="muted">本次回答未完成，请重新提问。</p>
-          <p v-if="turn.insufficientEvidence" class="muted">当前范围内没有足够的帖子可作为可靠依据。</p>
+          <p v-if="turn.insufficientEvidence && turn.answer !== insufficientEvidenceMessage" class="muted">
+            {{ insufficientEvidenceMessage }}
+          </p>
           <div v-if="turn.references.length" class="assistant-references">
             <h2>参考帖子</h2>
             <RouterLink v-for="reference in turn.references" :key="reference.postId" class="reference-item"
