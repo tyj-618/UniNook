@@ -20,6 +20,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import org.mockito.ArgumentCaptor;
 
 class AiAssistantServiceTests {
 
@@ -123,6 +124,24 @@ class AiAssistantServiceTests {
         assertThat(response.insufficientEvidence()).isTrue();
         assertThat(streamedResponse.answer()).isEqualTo(AiAssistantService.INSUFFICIENT_EVIDENCE_MESSAGE);
         assertThat(chunks).containsExactly(AiAssistantService.INSUFFICIENT_EVIDENCE_MESSAGE);
+    }
+
+    @Test
+    void reloadsCurrentCampusScopeForEachTurnInTheSameSession() {
+        UserProfile xianlinUser = userProfile();
+        UserProfile gulouUser = new UserProfile(7L, "student", "学生", 5L, 1L,
+                "南京大学", "鼓楼校区", "南京市", null, null, 0, 1, true, null, null);
+        when(userMapper.findProfileById(7L)).thenReturn(Optional.of(xianlinUser), Optional.of(gulouUser));
+        when(schoolService.listScopeSchoolIds(5L, CampusScope.CAMPUS)).thenReturn(List.of(5L));
+
+        service.ask("Bearer token", new AiAssistantRequest("仙林图书馆周末几点关门", CampusScope.CAMPUS, null, "campus-switch"));
+        service.ask("Bearer token", new AiAssistantRequest("鼓楼图书馆周末几点关门", CampusScope.CAMPUS, null, "campus-switch"));
+
+        ArgumentCaptor<RetrievalQuery> queries = ArgumentCaptor.forClass(RetrievalQuery.class);
+        verify(postRetriever, org.mockito.Mockito.times(2)).retrieve(queries.capture());
+        assertThat(queries.getAllValues())
+                .extracting(RetrievalQuery::allowedSchoolIds)
+                .containsExactly(List.of(10L), List.of(5L));
     }
 
     private UserProfile userProfile() {

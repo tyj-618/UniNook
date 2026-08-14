@@ -202,7 +202,12 @@ function isAbortError(error: unknown): boolean {
 
 function loadConversation(): ConversationTurn[] {
   const raw = localStorage.getItem(conversationStorageKey())
-  if (!raw) return []
+  if (!raw) {
+    // Conversations created before campus-scoped sessions could carry context from
+    // a previously selected campus. Do not reuse that context after an upgrade.
+    localStorage.removeItem(legacyConversationStorageKey())
+    return []
+  }
   try {
     const stored = JSON.parse(raw) as unknown
     if (!Array.isArray(stored)) return []
@@ -258,12 +263,9 @@ function loadSessionId(): string {
   const stored = localStorage.getItem(sessionStorageKey())
   if (stored) return stored
 
-  const legacy = localStorage.getItem(legacySessionStorageKey)
-  if (legacy) {
-    localStorage.setItem(sessionStorageKey(), legacy)
-    localStorage.removeItem(legacySessionStorageKey)
-    return legacy
-  }
+  // Older versions used one session per user. Discard it instead of attaching
+  // a conversation from a different campus to the current campus context.
+  localStorage.removeItem(legacySessionStorageKey)
 
   const value = createSessionId()
   localStorage.setItem(sessionStorageKey(), value)
@@ -289,7 +291,13 @@ function sessionStorageKey(): string {
 }
 
 function currentUserKey(): string {
-  return String(authStore.state.user?.id ?? 'anonymous')
+  const userId = authStore.state.user?.id ?? 'anonymous'
+  const schoolId = authStore.state.user?.schoolId ?? 'unbound'
+  return `${userId}:${schoolId}`
+}
+
+function legacyConversationStorageKey(): string {
+  return `uninook-assistant-conversation:${authStore.state.user?.id ?? 'anonymous'}`
 }
 
 function scopeLabel(value: CampusScope): string {

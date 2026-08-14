@@ -23,6 +23,22 @@ docker compose ps
 curl --fail http://127.0.0.1:8080/actuator/health
 ```
 
+## 既有数据库的校区目录迁移
+
+`schema.sql` 和 `data.sql` 只会在 MySQL 命名卷首次创建时执行。已有部署升级到包含多校区目录的版本时，需要在备份后手动执行对应迁移；迁移可重复运行，不会删除用户、帖子、评论或已有校区。
+
+当前校区目录迁移：
+
+```bash
+docker compose exec -T mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle' < docs/db-migrations/012_seed_campus_catalog.sql
+```
+
+执行后可用下列命令确认南京市已返回五个校区：
+
+```bash
+docker compose exec mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle -e "SELECT name, campus_name FROM school WHERE province=\"江苏省\" AND city=\"南京市\" AND status=0 ORDER BY name, campus_name;"'
+```
+
 初次启动 Elasticsearch 可能需要几十秒。若首个版本暂不启用混合检索，可以移除 `--profile search`，并保持 `CAMPUSCIRCLE_SEARCH_ENABLED=false`。
 
 将 `deploy/nginx/campuscircle.conf.example` 复制到 Nginx 站点配置，替换域名和证书路径。签发证书后检查并重载配置：
