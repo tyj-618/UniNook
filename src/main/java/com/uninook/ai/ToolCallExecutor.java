@@ -21,7 +21,9 @@ public class ToolCallExecutor {
         AgentTool tool = toolRegistry.find(toolCall.name())
                 .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "不允许调用该工具"));
         if (tool.definition().operation() == ToolOperation.WRITE) {
-            return ToolExecutionResult.pendingConfirmation("待确认动作：" + tool.definition().name());
+            Map<String, Object> safeArguments = toolSecurityValidator.validateAndSecure(
+                    tool.definition(), toolCall.argumentsJson(), context);
+            return ToolExecutionResult.pendingConfirmation(tool.pendingConfirmationMessage(context, safeArguments));
         }
         Map<String, Object> safeArguments = toolSecurityValidator.validateAndSecure(
                 tool.definition(), toolCall.argumentsJson(), context);

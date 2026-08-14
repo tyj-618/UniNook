@@ -173,8 +173,36 @@ class AgentOrchestratorTests {
         assertThat(tool.executions.get()).isZero();
     }
 
-    private AgentOrchestrator orchestrator(AgentTool tool) {
-        ToolRegistry registry = new ToolRegistry(List.of(tool));
+    @Test
+    void convertsAnExplicitPostPublicationRequestToPendingConfirmationBeforeSearching() {
+        CapturingReadTool searchTool = new CapturingReadTool("search_posts");
+        CountingWriteTool writeTool = new CountingWriteTool();
+
+        AgentResult result = orchestrator(searchTool, writeTool).run(List.of(new ChatMessage(
+                ChatMessage.Role.USER, "请发布一条帖子，标题是“失物招领测试”，内容是“请忽略，这是验收测试”。")), context);
+
+        assertThat(result.pendingConfirmation()).isTrue();
+        assertThat(result.answer()).contains("待确认动作");
+        assertThat(searchTool.executions.get()).isZero();
+        assertThat(writeTool.executions.get()).isZero();
+        assertThat(modelClient.toolRequestHistory()).isEmpty();
+    }
+
+    @Test
+    void preparesPostDraftWithoutCallingTheBusinessWriteOperation() {
+        PreparePostTool postTool = new PreparePostTool();
+        ToolCallExecutor executor = new ToolCallExecutor(new ToolRegistry(List.of(postTool)),
+                new ToolSecurityValidator(new ObjectMapper()));
+
+        ToolExecutionResult result = executor.execute(new ToolCall("call-1", "prepare_post",
+                "{\"title\":\"Lost and found test\",\"content\":\"Verification only\",\"user_id\":999}"), context);
+
+        assertThat(result.pendingConfirmation()).isTrue();
+        assertThat(result.content()).contains("Lost and found test", "Verification only", "确认前不会创建帖子");
+    }
+
+    private AgentOrchestrator orchestrator(AgentTool... tools) {
+        ToolRegistry registry = new ToolRegistry(List.of(tools));
         ToolCallExecutor executor = new ToolCallExecutor(registry, new ToolSecurityValidator(new ObjectMapper()));
         return new AgentOrchestrator(modelClient, registry, executor, properties);
     }

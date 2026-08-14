@@ -20,7 +20,10 @@ public class AgentOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(AgentOrchestrator.class);
     private static final String SEARCH_POSTS_TOOL = "search_posts";
+    private static final String PREPARE_POST_TOOL = "prepare_post";
     private static final Pattern QUESTION_PATTERN = Pattern.compile("<question>\\s*(.*?)\\s*</question>", Pattern.DOTALL);
+    private static final Pattern POST_TITLE_PATTERN = Pattern.compile("标题\\s*(?:是|为)?\\s*[“\\\"']?([^”\\\"'，。]+)");
+    private static final Pattern POST_CONTENT_PATTERN = Pattern.compile("内容\\s*(?:是|为)?\\s*[“\\\"']?([^”\\\"'。]+)");
     private static final String REPETITION_MESSAGE = "这一步没有新信息，请换思路或给出当前最佳答案。";
     private static final String VALIDATION_PREFIX = "工具参数校验失败：";
     private final AiModelClient aiModelClient;
@@ -82,6 +85,15 @@ public class AgentOrchestrator {
         log.info("assistant requestId={} stage=agent status=started messages={} tools={}",
                 AiRequestContext.requestId(), messages.size(), toolRegistry.definitions().size());
         for (int step = 0; step < properties.getAgentMaxSteps(); step++) {
+            if (step == 0 && isExplicitPostPublicationRequest(latestUserQuestion(messages))
+                    && toolRegistry.find(PREPARE_POST_TOOL).isPresent()) {
+                ToolCall fallbackCall = fallbackPreparePostCall(messages, step + 1);
+                ToolExecutionResult result = toolCallExecutor.execute(fallbackCall, context);
+                log.info("assistant requestId={} stage=tool step={} tool={} status=pending-confirmation",
+                        AiRequestContext.requestId(), step + 1, fallbackCall.name());
+                return new AgentLoopResult(
+                        AgentResult.pendingConfirmation(result.content(), null, references), messages, true);
+            }
             long modelStartedAt = System.currentTimeMillis();
             AgentModelResponse modelResponse;
             try {
@@ -174,6 +186,15 @@ public class AgentOrchestrator {
         return new ToolCall("fallback-search-" + step, SEARCH_POSTS_TOOL, arguments);
     }
 
+    private ToolCall fallbackPreparePostCall(List<ChatMessage> messages, int step) {
+        String question = latestUserQuestion(messages);
+        String title = extractDraftField(POST_TITLE_PATTERN, question, "待确认帖子");
+        String content = extractDraftField(POST_CONTENT_PATTERN, question, question);
+        String arguments = "{\"title\":\"" + escapeJson(title) + "\",\"content\":\""
+                + escapeJson(content) + "\"}";
+        return new ToolCall("fallback-prepare-post-" + step, PREPARE_POST_TOOL, arguments);
+    }
+
     private ToolCall contextualizeSearchToolCall(ToolCall toolCall, List<ChatMessage> messages) {
         if (!SEARCH_POSTS_TOOL.equals(toolCall.name()) || !isContextualFollowUp(latestUserQuestion(messages))) {
             return toolCall;
@@ -227,6 +248,16 @@ public class AgentOrchestrator {
                 || question.startsWith("具体") || question.startsWith("然后")
                 || question.startsWith("这个") || question.startsWith("这间")
                 || question.startsWith("这里") || question.startsWith("这样");
+    }
+
+    private boolean isExplicitPostPublicationRequest(String question) {
+        return question.contains("帖子") && (question.contains("发布")
+                || question.contains("发一条") || question.contains("发个"));
+    }
+
+    private String extractDraftField(Pattern pattern, String question, String fallback) {
+        Matcher matcher = pattern.matcher(question);
+        return matcher.find() ? matcher.group(1).trim() : fallback;
     }
 
     private String escapeJson(String value) {
