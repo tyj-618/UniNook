@@ -148,6 +148,8 @@ class AiAssistantServiceTests {
     void publishesStreamingMetadataBeforeAnswerChunks() throws Exception {
         List<String> events = new ArrayList<>();
         List<AiAssistantStreamMetadata> metadata = new ArrayList<>();
+        when(postRetriever.retrieve(any())).thenReturn(List.of(new RetrievedPost(
+                101L, "Library hours", "The library closes at 22:00.", "Example University", null)));
 
         service.stream("Bearer token", new AiAssistantRequest("library closing time", CampusScope.CAMPUS, null, "metadata-1"),
                 new AiStreamChunkConsumer() {
