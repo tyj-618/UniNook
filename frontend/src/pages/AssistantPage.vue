@@ -5,7 +5,7 @@ import { authStore } from '../auth/auth.ts'
 import { cancelPendingAction, confirmPendingPost, streamAssistant } from '../api/assistant.ts'
 import { getCategories } from '../api/categories.ts'
 import { errorMessageOf } from '../api/errors.ts'
-import type { AiAssistantResponse, AiPostReference, CampusScope, Category, PendingPostAction } from '../types/api.ts'
+import type { AiAssistantResponse, AiAssistantStreamMetadata, AiPostReference, CampusScope, Category, PendingPostAction } from '../types/api.ts'
 import { submitOnEnter } from '../utils/submitOnEnter.ts'
 
 interface ConversationTurn {
@@ -88,6 +88,7 @@ async function requestAnswer(turn: ConversationTurn): Promise<void> {
       onChunk: (chunk) => {
         turn.answer += chunk
       },
+      onMetadata: (metadata) => applyStreamMetadata(turn, metadata),
       onDone: (response) => finishTurn(turn, response),
     }, controller.signal)
   } catch (error) {
@@ -104,6 +105,18 @@ async function requestAnswer(turn: ConversationTurn): Promise<void> {
       isSubmitting.value = false
     }
   }
+}
+
+function applyStreamMetadata(turn: ConversationTurn, metadata: AiAssistantStreamMetadata): void {
+  turn.references = metadata.references
+  turn.insufficientEvidence = metadata.insufficientEvidence
+  turn.pendingAction = metadata.pendingAction
+  turn.pendingActionStatus = metadata.pendingAction ? 'pending' : null
+  turn.pendingActionCategoryId = metadata.pendingAction ? (categories.value[0]?.id ?? null) : null
+  turn.pendingActionPostId = null
+  turn.pendingActionError = ''
+  if (metadata.pendingAction) void ensureCategories(turn)
+  saveConversation()
 }
 
 function finishTurn(turn: ConversationTurn, response: AiAssistantResponse): void {

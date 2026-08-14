@@ -42,7 +42,17 @@ public class AiAssistantStreamController {
             AiAssistantResponse response = aiAssistantService.stream(
                     authorization,
                     request,
-                    chunk -> emitter.send(SseEmitter.event().name("message").data(chunk)));
+                    new AiStreamChunkConsumer() {
+                        @Override
+                        public void accept(String chunk) throws IOException {
+                            emitter.send(SseEmitter.event().name("message").data(chunk));
+                        }
+
+                        @Override
+                        public void acceptMetadata(AiAssistantStreamMetadata metadata) throws IOException {
+                            emitter.send(SseEmitter.event().name("metadata").data(metadata));
+                        }
+                    });
             emitter.send(SseEmitter.event().name("done").data(response));
             emitter.complete();
         } catch (BusinessException exception) {

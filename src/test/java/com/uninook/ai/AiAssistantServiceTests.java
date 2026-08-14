@@ -144,6 +144,30 @@ class AiAssistantServiceTests {
                 .containsExactly(List.of(10L), List.of(5L));
     }
 
+    @Test
+    void publishesStreamingMetadataBeforeAnswerChunks() throws Exception {
+        List<String> events = new ArrayList<>();
+        List<AiAssistantStreamMetadata> metadata = new ArrayList<>();
+
+        service.stream("Bearer token", new AiAssistantRequest("library closing time", CampusScope.CAMPUS, null, "metadata-1"),
+                new AiStreamChunkConsumer() {
+                    @Override
+                    public void accept(String chunk) {
+                        events.add("chunk");
+                    }
+
+                    @Override
+                    public void acceptMetadata(AiAssistantStreamMetadata item) {
+                        events.add("metadata");
+                        metadata.add(item);
+                    }
+                });
+
+        assertThat(events).first().isEqualTo("metadata");
+        assertThat(metadata).singleElement().satisfies(item ->
+                assertThat(item.references()).extracting(AiPostReference::postId).containsExactly(101L));
+    }
+
     private UserProfile userProfile() {
         return new UserProfile(7L, "student", "学生", 10L, 1L,
                 "示例大学", "示例校区", "示例城市", null, null, 0, 1,

@@ -121,9 +121,12 @@ public class AiAssistantService {
         AgentStreamingPlan plan = agentOrchestrator.prepareForStreaming(
                 promptBuilder.buildAgent(request.question(), history).messages(),
                 new ToolExecutionContext(userId, user, scope));
+        boolean insufficientEvidence = !plan.pendingConfirmation() && plan.references().isEmpty();
+        chunkConsumer.acceptMetadata(new AiAssistantStreamMetadata(
+                plan.references(), insufficientEvidence, plan.pendingAction()));
 
         String answer;
-        if (!plan.pendingConfirmation() && plan.references().isEmpty()) {
+        if (insufficientEvidence) {
             answer = INSUFFICIENT_EVIDENCE_MESSAGE;
             chunkConsumer.accept(answer);
         } else if (plan.requiresModelStream()) {
@@ -149,7 +152,7 @@ public class AiAssistantService {
         }
 
         AiAssistantResponse response = new AiAssistantResponse(
-                answer, plan.references(), !plan.pendingConfirmation() && plan.references().isEmpty(), requestId,
+                answer, plan.references(), insufficientEvidence, requestId,
                 plan.pendingAction());
         saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
         log.info("assistant requestId={} stage=stream-response references={} pendingConfirmation={} modelStream={}",

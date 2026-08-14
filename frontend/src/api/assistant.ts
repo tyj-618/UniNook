@@ -1,11 +1,12 @@
 import { apiClient, refreshAccessToken } from './client.ts'
 import { readAccessToken } from '../auth/session.ts'
-import type { AiAssistantResponse, ApiResponse, CampusScope, CreatePostResponse } from '../types/api.ts'
+import type { AiAssistantResponse, AiAssistantStreamMetadata, ApiResponse, CampusScope, CreatePostResponse } from '../types/api.ts'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 export interface AssistantStreamHandlers {
   onChunk: (chunk: string) => void
+  onMetadata: (metadata: AiAssistantStreamMetadata) => void
   onDone: (response: AiAssistantResponse) => void
 }
 
@@ -76,6 +77,7 @@ function consumeSseEvents(buffer: string, handlers: AssistantStreamHandlers): st
     const data = text.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n')
     if (!data) continue
     if (name === 'message') handlers.onChunk(data)
+    else if (name === 'metadata') handlers.onMetadata(JSON.parse(data) as AiAssistantStreamMetadata)
     else if (name === 'done') handlers.onDone(JSON.parse(data) as AiAssistantResponse)
     else if (name === 'error') throw new Error((JSON.parse(data) as { message?: string }).message || '智能问答流已中断，请稍后重试。')
   }

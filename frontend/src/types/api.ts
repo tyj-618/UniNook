@@ -279,3 +279,9 @@ export interface AiAssistantResponse {
   requestId: string
   pendingAction: PendingPostAction | null
 }
+
+export interface AiAssistantStreamMetadata {
+  references: AiPostReference[]
+  insufficientEvidence: boolean
+  pendingAction: PendingPostAction | null
+}
