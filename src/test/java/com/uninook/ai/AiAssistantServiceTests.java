@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -84,6 +85,20 @@ class AiAssistantServiceTests {
                 .extracting(ChatMessage::role)
                 .containsExactly(ChatMessage.Role.SYSTEM, ChatMessage.Role.USER);
         verifyNoInteractions(store);
+    }
+
+    @Test
+    void streamsInMultipleChunksAndKeepsSessionHistory() throws Exception {
+        List<String> firstChunks = new ArrayList<>();
+        service.stream("Bearer token", new AiAssistantRequest("图书馆几点开门", CampusScope.CAMPUS, null, "stream-1"),
+                firstChunks::add);
+        service.stream("Bearer token", new AiAssistantRequest("那周末呢", CampusScope.CAMPUS, null, "stream-1"),
+                chunk -> { });
+
+        assertThat(firstChunks).hasSizeGreaterThan(1);
+        assertThat(modelClient.lastGeneratedMessages())
+                .extracting(ChatMessage::content)
+                .contains("图书馆几点开门");
     }
 
     private UserProfile userProfile() {

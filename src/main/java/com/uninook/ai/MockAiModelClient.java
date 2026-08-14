@@ -40,6 +40,17 @@ public class MockAiModelClient implements AiModelClient {
         );
     }
 
+    @Override
+    public void generateStream(List<ChatMessage> messages, AiStreamChunkConsumer chunkConsumer)
+            throws java.io.IOException {
+        lastGeneratedMessages.set(List.copyOf(messages));
+        String answer = "已找到相关校园帖子，请查看下方参考内容以了解详情。";
+        int chunkSize = 8;
+        for (int start = 0; start < answer.length(); start += chunkSize) {
+            chunkConsumer.accept(answer.substring(start, Math.min(start + chunkSize, answer.length())));
+        }
+    }
+
     List<ChatMessage> lastGeneratedMessages() {
         return lastGeneratedMessages.get();
     }

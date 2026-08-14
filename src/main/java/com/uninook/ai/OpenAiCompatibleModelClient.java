@@ -18,6 +18,13 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -134,6 +141,55 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
         throw unavailable();
     }
 
+    @Override
+    public void generateStream(List<ChatMessage> messages, AiStreamChunkConsumer chunkConsumer) throws IOException {
+        ensureConfigured();
+        HttpURLConnection connection = null;
+        try {
+            URI endpoint = URI.create(stripTrailingSlash(properties.getBaseUrl()) + "/chat/completions");
+            connection = (HttpURLConnection) endpoint.toURL().openConnection();
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(Math.toIntExact(Duration.ofSeconds(properties.getTimeoutSeconds()).toMillis()));
+            connection.setReadTimeout(Math.toIntExact(Duration.ofSeconds(properties.getStreamReadTimeoutSeconds()).toMillis()));
+            connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey());
+            connection.setRequestProperty(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+            connection.setRequestProperty(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE);
+            byte[] requestBody = objectMapper.writeValueAsBytes(buildStreamRequestBody(messages));
+            try (var output = connection.getOutputStream()) {
+                output.write(requestBody);
+            }
+
+            int status = connection.getResponseCode();
+            if (status >= 400) {
+                throw new StreamHttpStatusException(status);
+            }
+            try (InputStream input = connection.getInputStream();
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.startsWith("data:")) {
+                        continue;
+                    }
+                    String data = line.substring("data:".length()).trim();
+                    if ("[DONE]".equals(data)) {
+                        return;
+                    }
+                    emitDeltaContent(data, chunkConsumer);
+                }
+            }
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "模型服务流式返回格式异常");
+        } catch (StreamHttpStatusException exception) {
+            log.warn("AI stream request failed: model={}, status={}", properties.getModel(), exception.status());
+            throw unavailable();
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
     Map<String, Object> buildRequestBody(AiModelRequest request) {
         return buildRequestBody(request.messages());
     }
@@ -154,6 +210,30 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
             body.put("enable_thinking", properties.getEnableThinking());
         }
         return body;
+    }
+
+    Map<String, Object> buildStreamRequestBody(List<ChatMessage> messages) {
+        Map<String, Object> body = new LinkedHashMap<>(buildRequestBody(messages));
+        body.remove("response_format");
+        body.put("max_tokens", properties.getMaxOutputTokens());
+        body.put("stream", true);
+        return body;
+    }
+
+    private void emitDeltaContent(String data, AiStreamChunkConsumer chunkConsumer) throws IOException {
+        var root = objectMapper.readTree(data);
+        var choices = root.path("choices");
+        if (!choices.isArray() || choices.isEmpty()) {
+            return;
+        }
+        var content = choices.get(0).path("delta").path("content");
+        if (!content.isMissingNode() && !content.isNull() && !content.asText().isEmpty()) {
+            chunkConsumer.accept(content.asText());
+        }
+    }
+
+    private String stripTrailingSlash(String url) {
+        return url != null && url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     private ProviderResponse parseProviderResponse(String responseBody) {
@@ -248,5 +328,18 @@ public class OpenAiCompatibleModelClient implements AiModelClient {
     }
 
     private record ModelAnswerPayload(String answer, List<Long> citedPostIds, Boolean insufficientEvidence) {
+    }
+
+    private static final class StreamHttpStatusException extends IOException {
+
+        private final int status;
+
+        private StreamHttpStatusException(int status) {
+            this.status = status;
+        }
+
+        private int status() {
+            return status;
+        }
     }
 }

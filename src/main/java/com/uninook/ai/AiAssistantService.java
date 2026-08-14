@@ -85,6 +85,44 @@ public class AiAssistantService {
         return response;
     }
 
+    public AiAssistantResponse stream(String authorization, AiAssistantRequest request,
+                                      AiStreamChunkConsumer chunkConsumer) throws java.io.IOException {
+        Long userId = currentUserService.requireUserId(authorization);
+        aiRequestRateLimiter.check(userId);
+        UserProfile user = userMapper.findProfileById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
+
+        CampusScope scope = CampusScope.resolve(request.scope(), request.radiusKm());
+        List<Long> allowedSchoolIds = schoolService.listScopeSchoolIds(user.schoolId(), scope);
+        List<RetrievedPost> posts = postRetriever.retrieve(
+                new RetrievalQuery(request.question(), allowedSchoolIds, RETRIEVAL_LIMIT));
+        List<ChatMessage> history = loadHistory(userId, request.sessionId());
+        if (posts.isEmpty()) {
+            String answer = "在当前查看范围内暂未找到相关校园帖子。";
+            chunkConsumer.accept(answer);
+            AiAssistantResponse response = new AiAssistantResponse(answer, List.of(), true, UUID.randomUUID().toString());
+            saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
+            return response;
+        }
+
+        StringBuilder answer = new StringBuilder();
+        aiModelClient.generateStream(promptBuilder.buildStreaming(request.question(), posts, history), chunk -> {
+            answer.append(chunk);
+            chunkConsumer.accept(chunk);
+        });
+        if (answer.toString().isBlank()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "智能问答服务未返回有效内容");
+        }
+        List<AiPostReference> references = posts.stream()
+                .limit(3)
+                .map(AiPostReference::from)
+                .toList();
+        AiAssistantResponse response = new AiAssistantResponse(
+                answer.toString().trim(), references, references.isEmpty(), UUID.randomUUID().toString());
+        saveHistory(userId, request.sessionId(), history, request.question(), response.answer());
+        return response;
+    }
+
     private List<ChatMessage> loadHistory(Long userId, String sessionId) {
         if (sessionId == null || sessionId.isBlank()) {
             return List.of();

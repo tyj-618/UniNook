@@ -18,8 +18,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.YearMonth;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -232,6 +234,35 @@ class UniNookApiIntegrationTests {
                 "radiusKm", 30
         ));
         assertCode(unauthorized, 40100);
+    }
+
+    @Test
+    void aiAssistantStreamEmitsMultipleChunksAndDoneEvent() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String username = "stream_assistant_" + suffix;
+        String keyword = "streamspace" + suffix;
+        register(username, "123456", "Stream Assistant");
+        String token = login(username, "123456");
+        createPost(token, firstCategoryId(), keyword);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url("/api/ai/assistant/stream")))
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(Map.of(
+                        "question", keyword,
+                        "radiusKm", 30,
+                        "sessionId", "stream-session-" + suffix
+                ))))
+                .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .header("Accept", MediaType.TEXT_EVENT_STREAM_VALUE)
+                .header("Authorization", bearer(token))
+                .build();
+        HttpResponse<Stream<String>> response = httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
+        assertThat(response.statusCode()).isEqualTo(200);
+        try (Stream<String> lines = response.body()) {
+            List<String> events = lines.toList();
+            assertThat(events).filteredOn(line -> line.equals("event:message")).hasSizeGreaterThan(1);
+            assertThat(events).contains("event:done");
+        }
     }
 
     @Test

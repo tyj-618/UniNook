@@ -43,6 +43,29 @@ public class PromptBuilder {
         return new AiModelRequest(SYSTEM_PROMPT, userPrompt, messages);
     }
 
+    public AiModelRequest buildStreaming(String question, List<RetrievedPost> posts, List<ChatMessage> history) {
+        String references = posts.stream().map(this::formatPost).collect(Collectors.joining("\n"));
+        String userPrompt = """
+                <references>
+                %s
+                </references>
+
+                <question>
+                %s
+                </question>
+
+                Reply in concise Chinese plain text. Use only the supplied references, state uncertainty clearly,
+                and do not return JSON or Markdown code fences.
+                """.formatted(references, question.trim());
+        List<ChatMessage> messages = new java.util.ArrayList<>();
+        messages.add(new ChatMessage(ChatMessage.Role.SYSTEM, SYSTEM_PROMPT));
+        if (history != null) {
+            messages.addAll(history);
+        }
+        messages.add(new ChatMessage(ChatMessage.Role.USER, userPrompt));
+        return new AiModelRequest(SYSTEM_PROMPT, userPrompt, messages);
+    }
+
     private String formatPost(RetrievedPost post) {
         return """
                 <post>

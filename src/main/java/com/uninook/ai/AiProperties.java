@@ -13,6 +13,7 @@ public class AiProperties {
     private int maxRetries = 1;
     private int maxRequestsPerMinute = 5;
     private int maxOutputTokens = 600;
+    private int streamReadTimeoutSeconds = 90;
     private int chatSessionTtlSeconds = 1800;
     private int chatSessionMaxMessages = 12;
     private boolean structuredOutput;
@@ -80,6 +81,14 @@ public class AiProperties {
 
     public void setMaxOutputTokens(int maxOutputTokens) {
         this.maxOutputTokens = maxOutputTokens;
+    }
+
+    public int getStreamReadTimeoutSeconds() {
+        return streamReadTimeoutSeconds;
+    }
+
+    public void setStreamReadTimeoutSeconds(int streamReadTimeoutSeconds) {
+        this.streamReadTimeoutSeconds = streamReadTimeoutSeconds;
     }
 
     public int getChatSessionTtlSeconds() {

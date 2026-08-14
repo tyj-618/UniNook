@@ -8,5 +8,13 @@ public interface AiModelClient {
         return generate(request.messages());
     }
 
+    void generateStream(java.util.List<ChatMessage> messages, AiStreamChunkConsumer chunkConsumer)
+            throws java.io.IOException;
+
+    default void generateStream(AiModelRequest request, AiStreamChunkConsumer chunkConsumer)
+            throws java.io.IOException {
+        generateStream(request.messages(), chunkConsumer);
+    }
+
     AiTextResult generateText(AiModelRequest request);
 }
