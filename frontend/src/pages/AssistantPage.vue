@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CircleAlert, RefreshCw, Send, Trash2 } from '@lucide/vue'
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { authStore } from '../auth/auth.ts'
 import { streamAssistant } from '../api/assistant.ts'
 import { errorMessageOf } from '../api/errors.ts'
@@ -43,6 +43,7 @@ async function submit(): Promise<void> {
   }
   conversation.value.push(turn)
   question.value = ''
+  focusLatestTurn()
   await requestAnswer(turn)
 }
 
@@ -76,6 +77,7 @@ async function requestAnswer(turn: ConversationTurn): Promise<void> {
       turn.status = 'failed'
       errorMessage.value = errorMessageOf(error, '校园助手暂时无法回答，请稍后重试。')
     }
+    saveConversation()
   } finally {
     if (abortController.value === controller) {
       abortController.value = null
@@ -89,6 +91,18 @@ function finishTurn(turn: ConversationTurn, response: AiAssistantResponse): void
   turn.references = response.references
   turn.insufficientEvidence = response.insufficientEvidence
   turn.status = 'completed'
+  saveConversation()
+}
+
+function focusLatestTurn(): void {
+  void nextTick(() => {
+    const container = document.querySelector<HTMLElement>('.assistant-conversation')
+    const turn = container?.lastElementChild
+    if (!container || !turn) return
+
+    const top = container.scrollTop + turn.getBoundingClientRect().top - container.getBoundingClientRect().top - 12
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  })
 }
 
 function cancel(): void {
@@ -117,7 +131,7 @@ function loadConversation(): ConversationTurn[] {
     const restored = stored.filter(isConversationTurn).map((turn) => ({
       ...turn,
       answer: turn.status === 'streaming' && !turn.answer ? '页面刷新已中断本次生成，请重新提问。' : turn.answer,
-      status: turn.status === 'streaming' ? 'cancelled' : turn.status,
+      status: turn.status === 'streaming' && turn.answer ? 'completed' : turn.status === 'streaming' ? 'cancelled' : turn.status,
     }))
     localStorage.setItem(conversationStorageKey(), JSON.stringify(restored))
     return restored
