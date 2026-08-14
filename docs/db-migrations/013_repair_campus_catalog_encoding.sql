@@ -39,17 +39,18 @@ SET name = CONVERT(0xE5A48DE697A6E5A4A7E5ADA6 USING utf8mb4),
     updated_at = CURRENT_TIMESTAMP
 WHERE id = 4;
 
--- Mojibake produced from UTF-8 bytes interpreted as Latin-1 contains C1
--- control characters. Campus catalog labels never validly contain controls,
--- so disable only these malformed rows and keep them for auditability.
+-- Mojibake produced from UTF-8 bytes interpreted as Latin-1 contains UTF-8
+-- encodings of C1 control characters (C2 80 through C2 9F). Valid catalog
+-- labels never contain that byte sequence, so disable only malformed rows and
+-- keep them for auditability.
 UPDATE school
 SET status = 1
 WHERE status = 0
   AND (
-      name REGEXP '[[:cntrl:]]'
-      OR campus_name REGEXP '[[:cntrl:]]'
-      OR province REGEXP '[[:cntrl:]]'
-      OR city REGEXP '[[:cntrl:]]'
+      HEX(name) REGEXP 'C2(8[0-9A-F]|9[A-F])'
+      OR HEX(campus_name) REGEXP 'C2(8[0-9A-F]|9[A-F])'
+      OR HEX(province) REGEXP 'C2(8[0-9A-F]|9[A-F])'
+      OR HEX(city) REGEXP 'C2(8[0-9A-F]|9[A-F])'
   );
 
 -- Link legacy valid rows after the university labels are restored.
