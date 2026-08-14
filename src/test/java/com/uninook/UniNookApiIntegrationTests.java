@@ -266,6 +266,39 @@ class UniNookApiIntegrationTests {
     }
 
     @Test
+    void aiAssistantStreamReturnsPendingPostDraftInDoneEvent() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String username = "stream_pending_" + suffix;
+        String title = "Stream pending " + suffix;
+        register(username, "123456", "Stream Pending User");
+        String token = login(username, "123456");
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url("/api/ai/assistant/stream")))
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(Map.of(
+                        "question", "帮我发布一条帖子，标题是“" + title + "”，内容是“仅用于流式草稿测试”。",
+                        "radiusKm", 10,
+                        "sessionId", "stream-pending-" + suffix
+                ))))
+                .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .header("Accept", MediaType.TEXT_EVENT_STREAM_VALUE)
+                .header("Authorization", bearer(token))
+                .build();
+        HttpResponse<Stream<String>> response = httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        try (Stream<String> lines = response.body()) {
+            List<String> events = lines.toList();
+            int doneIndex = events.indexOf("event:done");
+            assertThat(doneIndex).isGreaterThanOrEqualTo(0);
+            JsonNode done = objectMapper.readTree(events.get(doneIndex + 1).substring("data:".length()));
+            assertThat(done.at("/pendingAction/type").asText()).isEqualTo("CREATE_POST");
+            assertThat(done.at("/pendingAction/actionId").asText()).isNotBlank();
+            assertThat(done.at("/pendingAction/title").asText()).isEqualTo(title);
+        }
+    }
+
+    @Test
     void pendingPostDraftCreatesNothingUntilItIsConfirmed() throws Exception {
         String suffix = String.valueOf(System.nanoTime());
         String username = "pending_post_" + suffix;
