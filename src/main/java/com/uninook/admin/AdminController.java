@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -89,5 +90,29 @@ public class AdminController {
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         return ApiResponse.success(adminService.listActionLogs(authorization, page, size));
+    }
+
+    @GetMapping("/reports")
+    public ApiResponse<PageResponse<AdminReportListItem>> listReports(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
+            @RequestParam(required = false) String status) {
+        return ApiResponse.success(adminService.listReports(authorization, page, size, status));
+    }
+
+    @PostMapping("/reports/{reportId}/process")
+    public ApiResponse<Boolean> processReport(
+            @PathVariable Long reportId,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @jakarta.validation.Valid @RequestBody ProcessReportRequest request) {
+        adminService.processReport(reportId, request, authorization);
+        return ApiResponse.success(true);
+    }
+
+    @GetMapping("/feedback-stats")
+    public ApiResponse<AdminFeedbackStatsResponse> feedbackStats(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return ApiResponse.success(adminService.feedbackStats(authorization));
     }
 }

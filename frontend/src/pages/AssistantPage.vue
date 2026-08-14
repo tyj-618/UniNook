@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { Check, CircleAlert, RefreshCw, Send, Trash2, X } from '@lucide/vue'
+import { Check, CircleAlert, RefreshCw, Send, ThumbsDown, ThumbsUp, Trash2, X } from '@lucide/vue'
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { authStore } from '../auth/auth.ts'
-import { cancelPendingAction, confirmPendingPost, streamAssistant } from '../api/assistant.ts'
+import { cancelPendingAction, confirmPendingPost, streamAssistant, submitAssistantFeedback } from '../api/assistant.ts'
 import { getCategories } from '../api/categories.ts'
 import { errorMessageOf } from '../api/errors.ts'
-import type { AiAssistantResponse, AiAssistantStreamMetadata, AiPostReference, CampusScope, Category, PendingPostAction } from '../types/api.ts'
+import type { AiAssistantResponse, AiAssistantStreamMetadata, AiPostReference, AssistantFeedbackRating, CampusScope, Category, PendingPostAction } from '../types/api.ts'
 import { submitOnEnter } from '../utils/submitOnEnter.ts'
 
 interface ConversationTurn {
@@ -21,6 +21,8 @@ interface ConversationTurn {
   pendingActionCategoryId: number | null
   pendingActionPostId: number | null
   pendingActionError: string
+  requestId: string | null
+  feedbackRating: AssistantFeedbackRating | null
 }
 
 const legacySessionStorageKey = 'uninook-assistant-session-id'
@@ -34,6 +36,7 @@ const abortController = ref<AbortController | null>(null)
 const sessionId = ref(loadSessionId())
 const categories = ref<Category[]>([])
 const isLoadingCategories = ref(false)
+const feedbackSubmittingTurnId = ref<string | null>(null)
 
 watch(conversation, saveConversation, { deep: true })
 
@@ -60,6 +63,8 @@ async function submit(): Promise<void> {
     pendingActionCategoryId: null,
     pendingActionPostId: null,
     pendingActionError: '',
+    requestId: null,
+    feedbackRating: null,
   }
   conversation.value.push(turn)
   question.value = ''
@@ -74,6 +79,8 @@ async function refreshTurn(turn: ConversationTurn): Promise<void> {
   turn.references = []
   turn.insufficientEvidence = false
   turn.status = 'streaming'
+  turn.requestId = null
+  turn.feedbackRating = null
   await requestAnswer(turn)
 }
 
@@ -119,8 +126,24 @@ function applyStreamMetadata(turn: ConversationTurn, metadata: AiAssistantStream
   saveConversation()
 }
 
+async function submitFeedback(turn: ConversationTurn, rating: AssistantFeedbackRating): Promise<void> {
+  if (!turn.requestId || feedbackSubmittingTurnId.value) return
+  feedbackSubmittingTurnId.value = turn.id
+  try {
+    await submitAssistantFeedback(turn.requestId, rating, turn.question)
+    turn.feedbackRating = rating
+    saveConversation()
+  } catch (error) {
+    errorMessage.value = errorMessageOf(error, '反馈提交失败，请稍后重试。')
+  } finally {
+    feedbackSubmittingTurnId.value = null
+  }
+}
+
 function finishTurn(turn: ConversationTurn, response: AiAssistantResponse): void {
   turn.answer = response.answer
+  turn.requestId = response.requestId
+  turn.feedbackRating = null
   turn.references = response.references
   turn.insufficientEvidence = response.insufficientEvidence
   turn.status = 'completed'
@@ -233,6 +256,8 @@ function loadConversation(): ConversationTurn[] {
       pendingActionCategoryId: typeof turn.pendingActionCategoryId === 'number' ? turn.pendingActionCategoryId : null,
       pendingActionPostId: typeof turn.pendingActionPostId === 'number' ? turn.pendingActionPostId : null,
       pendingActionError: typeof turn.pendingActionError === 'string' ? turn.pendingActionError : '',
+      requestId: typeof turn.requestId === 'string' ? turn.requestId : null,
+      feedbackRating: turn.feedbackRating === 'HELPFUL' || turn.feedbackRating === 'UNHELPFUL' ? turn.feedbackRating : null,
     }))
     localStorage.setItem(conversationStorageKey(), JSON.stringify(restored))
     return restored
@@ -363,6 +388,17 @@ function scopeLabel(value: CampusScope): string {
               <span>{{ reference.schoolName }} · {{ reference.excerpt }}</span>
             </RouterLink>
           </div>
+          <div v-if="turn.status === 'completed' && turn.requestId" class="assistant-feedback">
+            <span>这条回答有帮助吗？</span>
+            <button type="button" class="text-button" :class="{ active: turn.feedbackRating === 'HELPFUL' }"
+              :disabled="feedbackSubmittingTurnId === turn.id" @click="submitFeedback(turn, 'HELPFUL')">
+              <ThumbsUp :size="15" />有帮助
+            </button>
+            <button type="button" class="text-button" :class="{ active: turn.feedbackRating === 'UNHELPFUL' }"
+              :disabled="feedbackSubmittingTurnId === turn.id" @click="submitFeedback(turn, 'UNHELPFUL')">
+              <ThumbsDown :size="15" />没帮助
+            </button>
+          </div>
           <section v-if="turn.pendingAction?.type === 'CREATE_POST'" class="assistant-pending-post">
             <template v-if="turn.pendingActionStatus === 'pending' || turn.pendingActionStatus === 'confirming'">
               <p class="assistant-pending-post__eyebrow">待确认发布</p>
@@ -420,3 +456,18 @@ function scopeLabel(value: CampusScope): string {
     <p v-if="errorMessage" class="form-error"><CircleAlert :size="16" />{{ errorMessage }}</p>
   </section>
 </template>
+
+<style scoped>
+.assistant-feedback {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.assistant-feedback .active {
+  color: var(--accent);
+}
+</style>

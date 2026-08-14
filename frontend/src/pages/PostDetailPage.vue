@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { ArrowLeft, CircleAlert, Eye, Heart, MapPinned, MessageCircle, Pencil, Reply, Send, Trash2 } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, Eye, Flag, Heart, MapPinned, MessageCircle, Pencil, Reply, Send, Trash2 } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createPostComment, deletePost, deletePostComment, getPostComments, getPostDetail, likeComment, likePost, unlikeComment, unlikePost, updatePost } from '../api/posts.ts'
 import { createQuestion, getQuestionsBySources } from '../api/questions.ts'
+import { submitContentReport } from '../api/reports.ts'
 import { errorMessageOf } from '../api/errors.ts'
 import { authStore } from '../auth/auth.ts'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import QuestionAnswerPanel from '../components/QuestionAnswerPanel.vue'
 import QuestionTrackingPanel from '../components/QuestionTrackingPanel.vue'
-import type { CampusScope, PostComment, PostDetail, QuestionSourceSummary, QuestionTracking } from '../types/api.ts'
+import type { CampusScope, PostComment, PostDetail, QuestionSourceSummary, QuestionTracking, ReportTargetType } from '../types/api.ts'
 import { submitOnEnter } from '../utils/submitOnEnter.ts'
 import { formatCompactDateTime } from '../utils/date.ts'
 import { readFeedPreferences } from '../utils/feedPreferences.ts'
@@ -25,6 +26,7 @@ interface PostContext {
 }
 
 type PendingDelete = { kind: 'post' } | { kind: 'comment'; comment: PostComment }
+type ReportTarget = { type: ReportTargetType; id: number; label: string }
 
 const replyBatchSize = 3
 const campusScopes = new Set<CampusScope>(['CAMPUS', 'UNIVERSITY', 'NEARBY_10', 'NEARBY_20', 'CITY'])
@@ -56,6 +58,9 @@ const isEditingPost = ref(false)
 const editTitle = ref('')
 const editContent = ref('')
 const pendingDelete = ref<PendingDelete | null>(null)
+const pendingReport = ref<ReportTarget | null>(null)
+const reportReason = ref('')
+const isSubmittingReport = ref(false)
 const visibleRepliesByRoot = ref<Record<number, number>>({})
 const expandedReplyRoots = ref<Set<number>>(new Set())
 const questionPanelVersion = ref(0)
@@ -407,6 +412,31 @@ async function handleInlineReply(comment: PostComment): Promise<void> {
 
 function requestDeleteComment(comment: PostComment): void { pendingDelete.value = { kind: 'comment', comment } }
 function requestDeletePost(): void { pendingDelete.value = { kind: 'post' } }
+function openReport(type: ReportTargetType, id: number, label: string): void {
+  pendingReport.value = { type, id, label }
+  reportReason.value = ''
+}
+function closeReport(): void {
+  if (isSubmittingReport.value) return
+  pendingReport.value = null
+  reportReason.value = ''
+}
+async function submitReport(): Promise<void> {
+  const target = pendingReport.value
+  const reason = reportReason.value.trim()
+  if (!target || !reason || isSubmittingReport.value) return
+  isSubmittingReport.value = true
+  try {
+    await submitContentReport(target.type, target.id, reason)
+    interactionMessage.value = '举报已提交，管理员会尽快处理。'
+    pendingReport.value = null
+    reportReason.value = ''
+  } catch (error) {
+    interactionMessage.value = errorMessageOf(error, '举报提交失败，请稍后重试。')
+  } finally {
+    isSubmittingReport.value = false
+  }
+}
 async function confirmDelete(): Promise<void> {
   const context = readPostContext()
   if (!context || !pendingDelete.value) return
@@ -469,7 +499,7 @@ onBeforeUnmount(() => activeRequest?.abort())
         <div v-if="isPostAuthor()" class="post-owner-actions"><button class="text-button" type="button" @click="startEditPost"><Pencil :size="14" />修改</button><button class="text-button danger" type="button" @click="requestDeletePost"><Trash2 :size="14" />删除</button></div>
         <template v-if="isEditingPost"><form class="editor-form post-edit-form" @submit.prevent="savePost"><label>标题<input v-model="editTitle" maxlength="100" /></label><label>正文<textarea v-model="editContent" rows="8" maxlength="5000" @keydown="submitOnEnter($event, savePost)" /></label><div class="page-actions"><button class="text-button" type="button" @click="cancelEditPost">取消</button><button class="primary-button" type="submit" :disabled="isSavingPost || !editTitle.trim() || !editContent.trim()">{{ isSavingPost ? '保存中...' : '保存修改' }}</button></div></form></template>
         <template v-else><h1>{{ post.title }}</h1><div class="post-author"><RouterLink class="post-author-avatar" :to="userProfileTarget(post.author.id)" :aria-label="`查看 ${post.author.nickname} 的主页`"><img v-if="post.author.avatarUrl" :src="post.author.avatarUrl" alt="" /><template v-else>{{ post.author.nickname.slice(0, 1).toUpperCase() }}</template></RouterLink><span>发布者：</span><RouterLink :to="userProfileTarget(post.author.id)">{{ post.author.nickname }}</RouterLink></div><div class="post-content">{{ post.content }}</div></template>
-        <div v-if="!isEditingPost" class="post-detail-footer"><div class="post-stats"><span><Eye :size="16" />{{ post.viewCount }}</span><span><MessageCircle :size="16" />{{ post.commentCount }}</span></div><button class="like-button" :class="{ active: post.liked }" type="button" :disabled="isLiking" @click="handleLike"><Heart :size="17" :fill="post.liked ? 'currentColor' : 'none'" />{{ post.liked ? '已赞' : '点赞' }} {{ post.likeCount }}</button></div>
+        <div v-if="!isEditingPost" class="post-detail-footer"><div class="post-stats"><span><Eye :size="16" />{{ post.viewCount }}</span><span><MessageCircle :size="16" />{{ post.commentCount }}</span></div><div class="post-detail-actions"><button v-if="!isPostAuthor()" class="text-button" type="button" @click="openReport('POST', post.id, '这篇帖子')"><Flag :size="15" />举报</button><button class="like-button" :class="{ active: post.liked }" type="button" :disabled="isLiking" @click="handleLike"><Heart :size="17" :fill="post.liked ? 'currentColor' : 'none'" />{{ post.liked ? '已赞' : '点赞' }} {{ post.likeCount }}</button></div></div>
       </article>
 
       <section v-if="!isEditingPost" class="post-question-workspace">
@@ -530,6 +560,7 @@ onBeforeUnmount(() => activeRequest?.abort())
                   <button class="text-button" type="button" @click="startReply(comment)"><Reply :size="14" />{{ comment.rootCommentId === null ? '追评' : '回复' }}</button>
                   <button v-if="canCreateCommentQuestion(comment) && !commentQuestion(comment)" class="text-button" type="button" @click="openCommentQuestionComposer(comment)">发起问题追踪</button>
                   <button class="text-button" :class="{ active: comment.liked }" type="button" :disabled="likingCommentId === comment.id" @click="handleCommentLike(comment)"><Heart :size="14" :fill="comment.liked ? 'currentColor' : 'none'" />{{ comment.liked ? '已赞' : '点赞' }} {{ comment.likeCount }}</button>
+                  <button v-if="!isCommentAuthor(comment)" class="text-button" type="button" @click="openReport('COMMENT', comment.id, '这条评论')"><Flag :size="14" />举报</button>
                   <button v-if="isCommentAuthor(comment)" class="text-button danger" type="button" @click="requestDeleteComment(comment)"><Trash2 :size="14" />删除</button>
                 </div>
                 <form v-if="activeCommentQuestionId === comment.id" class="inline-comment-form" @submit.prevent="submitCommentQuestion(comment)">
@@ -552,5 +583,21 @@ onBeforeUnmount(() => activeRequest?.abort())
       </section>
     </template>
   </section>
+  <div v-if="pendingReport" class="report-dialog-backdrop" @click.self="closeReport">
+    <form class="report-dialog" @submit.prevent="submitReport">
+      <h2>举报内容</h2>
+      <p class="muted">请说明举报 {{ pendingReport.label }} 的原因，管理员将结合内容进行处理。</p>
+      <textarea v-model="reportReason" rows="4" maxlength="500" placeholder="例如：广告、骚扰、虚假信息等" autofocus />
+      <div class="page-actions"><button class="secondary-button" type="button" :disabled="isSubmittingReport" @click="closeReport">取消</button><button class="primary-button" type="submit" :disabled="isSubmittingReport || !reportReason.trim()"><Flag :size="16" />{{ isSubmittingReport ? '提交中…' : '提交举报' }}</button></div>
+    </form>
+  </div>
   <ConfirmDialog :visible="pendingDelete !== null" :title="pendingDelete?.kind === 'post' ? '删除帖子' : '删除评论'" message="删除后无法恢复。" confirm-text="确认删除" :danger="true" :is-loading="isDeleting" @confirm="confirmDelete" @cancel="pendingDelete = null" />
 </template>
+
+<style scoped>
+.post-detail-actions { display: flex; align-items: center; gap: 0.75rem; }
+.report-dialog-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 35%); }
+.report-dialog { width: min(100%, 520px); display: grid; gap: 1rem; padding: 1.5rem; border-radius: 14px; background: var(--surface); box-shadow: 0 18px 45px rgb(0 0 0 / 18%); }
+.report-dialog h2 { margin: 0; }
+.report-dialog textarea { width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem; font: inherit; color: var(--ink); background: var(--surface); }
+</style>

@@ -1,6 +1,6 @@
 import { apiClient, refreshAccessToken } from './client.ts'
 import { readAccessToken } from '../auth/session.ts'
-import type { AiAssistantResponse, AiAssistantStreamMetadata, ApiResponse, CampusScope, CreatePostResponse } from '../types/api.ts'
+import type { AiAssistantResponse, AiAssistantStreamMetadata, ApiResponse, AssistantFeedbackRating, CampusScope, CreatePostResponse } from '../types/api.ts'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -22,6 +22,15 @@ export async function confirmPendingPost(actionId: string, categoryId: number): 
 
 export async function cancelPendingAction(actionId: string): Promise<void> {
   await apiClient.delete<ApiResponse<boolean>>(`/ai/pending-actions/${actionId}`)
+}
+
+export async function submitAssistantFeedback(
+  requestId: string,
+  rating: AssistantFeedbackRating,
+  question: string,
+  comment?: string,
+): Promise<void> {
+  await apiClient.post<ApiResponse<number>>('/assistant/feedback', { requestId, rating, question, comment })
 }
 
 export async function streamAssistant(

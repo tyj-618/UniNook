@@ -63,6 +63,16 @@ docker compose exec mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campusci
 docker compose exec mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle -e "UPDATE \`user\` SET role = 1 WHERE id = <verified-user-id>;"'
 ```
 
+## Content governance and feedback migration
+
+For an existing deployment, run the following migration once after the usual database backup and
+before deploying the content-governance release. It creates the report and assistant-feedback
+tables without modifying existing posts, comments, or users:
+
+```bash
+docker compose exec -T mysql sh -lc 'mysql --default-character-set=utf8mb4 -uroot -p"$MYSQL_ROOT_PASSWORD" campuscircle' < docs/db-migrations/015_content_governance_feedback.sql
+```
+
 初次启动 Elasticsearch 可能需要几十秒。若首个版本暂不启用混合检索，可以移除 `--profile search`，并保持 `CAMPUSCIRCLE_SEARCH_ENABLED=false`。
 
 将 `deploy/nginx/campuscircle.conf.example` 复制到 Nginx 站点配置，替换域名和证书路径。签发证书后检查并重载配置：

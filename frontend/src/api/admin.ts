@@ -1,7 +1,9 @@
 import { apiClient } from './client.ts'
 import type {
   AdminActionLogItem,
+  AdminFeedbackStatsResponse,
   AdminPostListItem,
+  AdminReportListItem,
   AdminUserListItem,
   ApiResponse,
   PageResponse,
@@ -28,6 +30,22 @@ export async function getAdminActionLogs(page = 1, size = 20): Promise<PageRespo
   const response = await apiClient.get<ApiResponse<PageResponse<AdminActionLogItem>>>('/admin/action-logs', {
     params: { page, size },
   })
+  return response.data.data!
+}
+
+export async function getAdminReports(page = 1, size = 20, status?: string): Promise<PageResponse<AdminReportListItem>> {
+  const response = await apiClient.get<ApiResponse<PageResponse<AdminReportListItem>>>('/admin/reports', {
+    params: { page, size, status },
+  })
+  return response.data.data!
+}
+
+export async function processAdminReport(reportId: number, status: 'PROCESSED' | 'REJECTED', adminNote?: string): Promise<void> {
+  await apiClient.post<ApiResponse<boolean>>(`/admin/reports/${reportId}/process`, { status, adminNote })
+}
+
+export async function getAdminFeedbackStats(): Promise<AdminFeedbackStatsResponse> {
+  const response = await apiClient.get<ApiResponse<AdminFeedbackStatsResponse>>('/admin/feedback-stats')
   return response.data.data!
 }
 

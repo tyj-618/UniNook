@@ -67,6 +67,45 @@ public interface AdminMapper extends BaseMapper<UserEntity> {
     @Select("SELECT COUNT(*) FROM admin_action_log")
     long countActionLogs();
 
+    @SelectProvider(type = AdminSqlProvider.class, method = "countReports")
+    long countReports(@Param("status") String status);
+
+    @SelectProvider(type = AdminSqlProvider.class, method = "selectReports")
+    List<AdminReportListItem> selectReports(@Param("status") String status, @Param("limit") int limit,
+                                             @Param("offset") int offset);
+
+    @Select("SELECT COUNT(*) FROM report WHERE id = #{reportId}")
+    long countReportById(@Param("reportId") Long reportId);
+
+    @Update("""
+            UPDATE report
+            SET status = #{status}, admin_id = #{adminId}, admin_note = #{adminNote}, processed_at = CURRENT_TIMESTAMP
+            WHERE id = #{reportId} AND status = 'PENDING'
+            """)
+    int processReport(@Param("reportId") Long reportId, @Param("status") String status,
+                      @Param("adminId") Long adminId, @Param("adminNote") String adminNote);
+
+    @Select("""
+            SELECT request_id AS requestId,
+                   SUM(CASE WHEN rating = 'HELPFUL' THEN 1 ELSE 0 END) AS helpfulCount,
+                   SUM(CASE WHEN rating = 'UNHELPFUL' THEN 1 ELSE 0 END) AS unhelpfulCount
+            FROM feedback
+            GROUP BY request_id
+            ORDER BY unhelpfulCount DESC, request_id DESC
+            LIMIT #{limit}
+            """)
+    List<FeedbackRatingSummary> selectFeedbackRatingSummaries(@Param("limit") int limit);
+
+    @Select("""
+            SELECT question_text AS question, COUNT(*) AS count
+            FROM feedback
+            WHERE question_text IS NOT NULL AND question_text <> ''
+            GROUP BY question_text
+            ORDER BY count DESC, question_text ASC
+            LIMIT #{limit}
+            """)
+    List<FrequentQuestionItem> selectFrequentQuestions(@Param("limit") int limit);
+
     class AdminSqlProvider {
         public String countPosts(Map<String, Object> params) {
             return "<script>SELECT COUNT(*) FROM post p " + postWhereClause(params) + "</script>";
@@ -97,6 +136,23 @@ public interface AdminMapper extends BaseMapper<UserEntity> {
                     """ + userWhereClause(params) + " ORDER BY u.id DESC LIMIT #{limit} OFFSET #{offset}</script>";
         }
 
+        public String countReports(Map<String, Object> params) {
+            return "<script>SELECT COUNT(*) FROM report r " + reportWhereClause(params) + "</script>";
+        }
+
+        public String selectReports(Map<String, Object> params) {
+            return """
+                    <script>
+                    SELECT r.id, r.reporter_id AS reporterId, reporter.nickname AS reporterNickname,
+                           r.target_type AS targetType, r.target_id AS targetId, r.reason, r.status,
+                           r.admin_id AS adminId, admin.nickname AS adminNickname, r.admin_note AS adminNote,
+                           r.created_at AS createdAt, r.processed_at AS processedAt
+                    FROM report r
+                    JOIN `user` reporter ON reporter.id = r.reporter_id
+                    LEFT JOIN `user` admin ON admin.id = r.admin_id
+                    """ + reportWhereClause(params) + " ORDER BY r.id DESC LIMIT #{limit} OFFSET #{offset}</script>";
+        }
+
         private String postWhereClause(Map<String, Object> params) {
             StringBuilder where = new StringBuilder(" WHERE 1 = 1");
             if (hasText(params, "keyword")) {
@@ -117,6 +173,10 @@ public interface AdminMapper extends BaseMapper<UserEntity> {
                 where.append(" AND u.status = #{status}");
             }
             return where.toString();
+        }
+
+        private String reportWhereClause(Map<String, Object> params) {
+            return params.get("status") == null ? "" : " WHERE r.status = #{status}";
         }
 
         private boolean hasText(Map<String, Object> params, String name) {

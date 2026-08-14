@@ -10,6 +10,7 @@ import com.uninook.user.UserMapper;
 import com.uninook.event.DomainEventPublisher;
 import com.uninook.event.PostSearchIndexEvent;
 import com.uninook.ai.PostSearchIndexService;
+import com.uninook.report.ReportStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -109,12 +110,67 @@ public class AdminService {
         return PageResponse.of(page, size, total, adminMapper.selectActionLogs(size, (page - 1) * size));
     }
 
+    public PageResponse<AdminReportListItem> listReports(String authorization, int page, int size, String status) {
+        requireAdmin(authorization);
+        String normalizedStatus = normalizeReportStatus(status, true);
+        long total = adminMapper.countReports(normalizedStatus);
+        return PageResponse.of(page, size, total,
+                adminMapper.selectReports(normalizedStatus, size, (page - 1) * size));
+    }
+
+    @Transactional
+    public void processReport(Long reportId, ProcessReportRequest request, String authorization) {
+        Long adminUserId = requireAdmin(authorization);
+        if (adminMapper.countReportById(reportId) == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "举报记录不存在");
+        }
+        String status = normalizeReportStatus(request.status(), false);
+        int updated = adminMapper.processReport(reportId, status, adminUserId, trimToNull(request.adminNote()));
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "该举报已处理，不能重复处理");
+        }
+        adminMapper.insertActionLog(adminUserId, "REPORT", reportId, "PROCESS_" + status);
+    }
+
+    public AdminFeedbackStatsResponse feedbackStats(String authorization) {
+        requireAdmin(authorization);
+        var lowQualityAnswers = adminMapper.selectFeedbackRatingSummaries(20).stream()
+                .map(summary -> new LowQualityAnswerItem(summary.requestId(), summary.helpfulCount(),
+                        summary.unhelpfulCount(), summary.unhelpfulRate()))
+                .sorted((left, right) -> Double.compare(right.unhelpfulRate(), left.unhelpfulRate()))
+                .toList();
+        return new AdminFeedbackStatsResponse(lowQualityAnswers, adminMapper.selectFrequentQuestions(20));
+    }
+
     private void publishIndexEventAfterCommit(Long postId) {
         afterCommitExecutor.execute(() -> domainEventPublisher.publishPostSearchIndex(PostSearchIndexEvent.forPost(postId)));
     }
 
     private String normalizeKeyword(String keyword) {
         return keyword == null ? null : keyword.trim();
+    }
+
+    private String normalizeReportStatus(String status, boolean allowEmpty) {
+        if (status == null || status.isBlank()) {
+            return allowEmpty ? null : invalidReportStatus();
+        }
+        try {
+            ReportStatus parsed = ReportStatus.valueOf(status.trim().toUpperCase(java.util.Locale.ROOT));
+            if (!allowEmpty && parsed == ReportStatus.PENDING) {
+                return invalidReportStatus();
+            }
+            return parsed.name();
+        } catch (IllegalArgumentException exception) {
+            return invalidReportStatus();
+        }
+    }
+
+    private String invalidReportStatus() {
+        throw new BusinessException(ErrorCode.PARAM_ERROR, "举报状态仅支持 PENDING、PROCESSED 或 REJECTED；处理时仅支持后两项");
+    }
+
+    private String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private Long requireAdmin(String authorization) {

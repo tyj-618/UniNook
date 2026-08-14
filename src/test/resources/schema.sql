@@ -1,4 +1,6 @@
 DROP TABLE IF EXISTS notice;
+DROP TABLE IF EXISTS feedback;
+DROP TABLE IF EXISTS report;
 DROP TABLE IF EXISTS admin_action_log;
 DROP TABLE IF EXISTS question_answer;
 DROP TABLE IF EXISTS question_subscription;
@@ -216,4 +218,33 @@ CREATE TABLE admin_action_log (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_admin_action_created (admin_user_id, created_at),
     KEY idx_target_created (target_type, target_id, created_at)
+);
+
+CREATE TABLE report (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    reporter_id BIGINT NOT NULL,
+    target_type VARCHAR(16) NOT NULL,
+    target_id BIGINT NOT NULL,
+    reason VARCHAR(500) NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+    admin_id BIGINT DEFAULT NULL,
+    admin_note VARCHAR(500) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at DATETIME DEFAULT NULL,
+    KEY idx_report_status_created (status, created_at),
+    KEY idx_report_target (target_type, target_id),
+    KEY idx_report_reporter_created (reporter_id, created_at)
+);
+
+CREATE TABLE feedback (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    request_id VARCHAR(64) NOT NULL,
+    rating VARCHAR(16) NOT NULL,
+    comment VARCHAR(500) DEFAULT NULL,
+    question_text VARCHAR(500) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_feedback_user_request (user_id, request_id),
+    KEY idx_feedback_request_rating (request_id, rating),
+    KEY idx_feedback_created (created_at)
 );

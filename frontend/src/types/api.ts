@@ -317,3 +317,39 @@ export interface AdminActionLogItem {
   action: string
   createdAt: string
 }
+
+export type ReportTargetType = 'POST' | 'COMMENT'
+export type ReportStatus = 'PENDING' | 'PROCESSED' | 'REJECTED'
+export type AssistantFeedbackRating = 'HELPFUL' | 'UNHELPFUL'
+
+export interface AdminReportListItem {
+  id: number
+  reporterId: number
+  reporterNickname: string
+  targetType: ReportTargetType
+  targetId: number
+  reason: string
+  status: ReportStatus
+  adminId: number | null
+  adminNickname: string | null
+  adminNote: string | null
+  createdAt: string
+  processedAt: string | null
+}
+
+export interface LowQualityAnswerItem {
+  requestId: string
+  helpfulCount: number
+  unhelpfulCount: number
+  unhelpfulRate: number
+}
+
+export interface FrequentQuestionItem {
+  question: string
+  count: number
+}
+
+export interface AdminFeedbackStatsResponse {
+  lowQualityAnswers: LowQualityAnswerItem[]
+  frequentQuestions: FrequentQuestionItem[]
+}

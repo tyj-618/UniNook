@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertCircle, Database, FileText, ShieldCheck, UsersRound } from '@lucide/vue'
+import { AlertCircle, BarChart3, Database, FileText, Flag, ShieldCheck, UsersRound } from '@lucide/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { authStore } from '../auth/auth.ts'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -7,17 +7,20 @@ import {
   disableAdminUser,
   enableAdminUser,
   getAdminActionLogs,
+  getAdminFeedbackStats,
   getAdminPosts,
+  getAdminReports,
   getAdminUsers,
   hideAdminPost,
   rebuildAdminPostIndex,
   restoreAdminPost,
+  processAdminReport,
 } from '../api/admin.ts'
 import { errorMessageOf } from '../api/errors.ts'
-import type { AdminActionLogItem, AdminPostListItem, AdminUserListItem } from '../types/api.ts'
+import type { AdminActionLogItem, AdminFeedbackStatsResponse, AdminPostListItem, AdminReportListItem, AdminUserListItem, ReportStatus } from '../types/api.ts'
 import { formatCompactDateTime } from '../utils/date.ts'
 
-type AdminTab = 'posts' | 'users' | 'logs'
+type AdminTab = 'posts' | 'users' | 'reports' | 'feedback' | 'logs'
 type ConfirmAction = { title: string; message: string; confirmText: string; run: () => Promise<void> } | null
 
 const activeTab = ref<AdminTab>('posts')
@@ -25,7 +28,10 @@ const keyword = ref('')
 const status = ref<number | undefined>()
 const page = ref(1)
 const total = ref(0)
-const records = ref<AdminPostListItem[] | AdminUserListItem[] | AdminActionLogItem[]>([])
+const records = ref<AdminPostListItem[] | AdminUserListItem[] | AdminReportListItem[] | AdminActionLogItem[]>([])
+const reportStatus = ref<ReportStatus | undefined>()
+const reportNotes = ref<Record<number, string>>({})
+const feedbackStats = ref<AdminFeedbackStatsResponse | null>(null)
 const isLoading = ref(false)
 const isSubmitting = ref(false)
 const errorMessage = ref('')
@@ -36,7 +42,7 @@ const t = {
   eyebrow: '\u0041\u0044\u004d\u0049\u004e\u0020\u0043\u004f\u004e\u0053\u004f\u004c\u0045',
   title: '\u5185\u5bb9\u7ba1\u7406',
   subtitle: '\u67e5\u770b\u5e16\u5b50\u3001\u7528\u6237\u4e0e\u7ba1\u7406\u64cd\u4f5c\u8bb0\u5f55\u3002\u654f\u611f\u64cd\u4f5c\u9700\u4e8c\u6b21\u786e\u8ba4\u3002',
-  posts: '\u5e16\u5b50', users: '\u7528\u6237', logs: '\u5ba1\u8ba1\u8bb0\u5f55',
+  posts: '\u5e16\u5b50', users: '\u7528\u6237', reports: '举报管理', feedback: '反馈统计', logs: '\u5ba1\u8ba1\u8bb0\u5f55',
   searchPlaceholder: '\u641c\u7d22\u6807\u9898\u3001\u5185\u5bb9\u3001\u7528\u6237\u540d\u6216\u6635\u79f0',
   allStatus: '\u5168\u90e8\u72b6\u6001', normal: '\u6b63\u5e38', hidden: '\u5df2\u9690\u85cf', disabled: '\u5df2\u7981\u7528',
   search: '\u67e5\u8be2', refresh: '\u5237\u65b0',
@@ -60,11 +66,15 @@ const t = {
 const pages = computed(() => Math.max(1, Math.ceil(total.value / 20)))
 const isPostTab = computed(() => activeTab.value === 'posts')
 const isUserTab = computed(() => activeTab.value === 'users')
+const isReportTab = computed(() => activeTab.value === 'reports')
+const isFeedbackTab = computed(() => activeTab.value === 'feedback')
 
 watch(activeTab, () => {
   page.value = 1
   keyword.value = ''
   status.value = undefined
+  reportStatus.value = undefined
+  feedbackStats.value = null
   void loadRecords()
 })
 
@@ -92,6 +102,14 @@ async function loadRecords(): Promise<void> {
       const result = await getAdminUsers({ page: page.value, size: 20, keyword: keyword.value || undefined, status: status.value })
       records.value = result.records
       total.value = result.total
+    } else if (activeTab.value === 'reports') {
+      const result = await getAdminReports(page.value, 20, reportStatus.value)
+      records.value = result.records
+      total.value = result.total
+    } else if (activeTab.value === 'feedback') {
+      feedbackStats.value = await getAdminFeedbackStats()
+      records.value = []
+      total.value = 0
     } else {
       const result = await getAdminActionLogs(page.value, 20)
       records.value = result.records
@@ -101,6 +119,20 @@ async function loadRecords(): Promise<void> {
     errorMessage.value = errorMessageOf(error, t.loadFailed)
   } finally {
     isLoading.value = false
+  }
+}
+
+function reportStatusText(status: ReportStatus): string {
+  return { PENDING: '待处理', PROCESSED: '已处理', REJECTED: '已驳回' }[status]
+}
+
+function queueReportAction(item: AdminReportListItem, nextStatus: 'PROCESSED' | 'REJECTED'): void {
+  const processed = nextStatus === 'PROCESSED'
+  confirmAction.value = {
+    title: processed ? '确认处理举报' : '确认驳回举报',
+    message: processed ? '处理后会记录管理员意见与处理时间。' : '驳回后举报将不再处于待处理状态。',
+    confirmText: processed ? '确认处理' : '确认驳回',
+    run: async () => processAdminReport(item.id, nextStatus, reportNotes.value[item.id]?.trim() || undefined),
   }
 }
 
@@ -172,12 +204,20 @@ function changePage(nextPage: number): void {
     <div class="segmented-control admin-tabs">
       <button :class="{ active: activeTab === 'posts' }" type="button" @click="activeTab = 'posts'"><FileText :size="17" />{{ t.posts }}</button>
       <button :class="{ active: activeTab === 'users' }" type="button" @click="activeTab = 'users'"><UsersRound :size="17" />{{ t.users }}</button>
+      <button :class="{ active: activeTab === 'reports' }" type="button" @click="activeTab = 'reports'"><Flag :size="17" />{{ t.reports }}</button>
+      <button :class="{ active: activeTab === 'feedback' }" type="button" @click="activeTab = 'feedback'"><BarChart3 :size="17" />{{ t.feedback }}</button>
       <button :class="{ active: activeTab === 'logs' }" type="button" @click="activeTab = 'logs'"><ShieldCheck :size="17" />{{ t.logs }}</button>
     </div>
 
-    <form v-if="activeTab !== 'logs'" class="admin-filters" @submit.prevent="page = 1; loadRecords()">
+    <form v-if="activeTab !== 'logs' && !isFeedbackTab" class="admin-filters" @submit.prevent="page = 1; loadRecords()">
       <input v-model.trim="keyword" :placeholder="t.searchPlaceholder" maxlength="100" />
-      <select v-model="status">
+      <select v-if="isReportTab" v-model="reportStatus">
+        <option :value="undefined">全部状态</option>
+        <option value="PENDING">待处理</option>
+        <option value="PROCESSED">已处理</option>
+        <option value="REJECTED">已驳回</option>
+      </select>
+      <select v-else v-model="status">
         <option :value="undefined">{{ t.allStatus }}</option>
         <option :value="0">{{ t.normal }}</option>
         <option :value="isPostTab ? 2 : 1">{{ isPostTab ? t.hidden : t.disabled }}</option>
@@ -188,6 +228,30 @@ function changePage(nextPage: number): void {
     <p v-if="successMessage" class="admin-success">{{ successMessage }}</p>
     <section v-if="errorMessage" class="admin-message admin-message--error"><AlertCircle :size="18" />{{ errorMessage }}</section>
     <section v-else-if="isLoading" class="admin-message">{{ t.processing }}</section>
+    <section v-else-if="isFeedbackTab" class="admin-feedback-grid">
+      <article class="admin-feedback-card">
+        <h2>低质量回答</h2>
+        <p class="muted">按“没帮助”占比排序，便于复盘回答效果。</p>
+        <p v-if="!feedbackStats?.lowQualityAnswers.length" class="muted">暂时没有反馈记录。</p>
+        <ol v-else>
+          <li v-for="item in feedbackStats.lowQualityAnswers" :key="item.requestId">
+            <strong>{{ item.unhelpfulRate }}%</strong>
+            <span>没帮助 {{ item.unhelpfulCount }} · 有帮助 {{ item.helpfulCount }}</span>
+            <small>{{ item.requestId }}</small>
+          </li>
+        </ol>
+      </article>
+      <article class="admin-feedback-card">
+        <h2>高频问题</h2>
+        <p class="muted">按用户提交反馈时关联的提问文本统计。</p>
+        <p v-if="!feedbackStats?.frequentQuestions.length" class="muted">暂时没有可统计的问题。</p>
+        <ol v-else>
+          <li v-for="item in feedbackStats.frequentQuestions" :key="item.question">
+            <strong>{{ item.question }}</strong><span>{{ item.count }} 次</span>
+          </li>
+        </ol>
+      </article>
+    </section>
     <section v-else-if="records.length === 0" class="admin-message">{{ t.empty }}</section>
 
     <div v-else class="admin-table-wrap">
@@ -199,13 +263,17 @@ function changePage(nextPage: number): void {
         <thead><tr><th>{{ t.username }}</th><th>{{ t.nickname }}</th><th>{{ t.role }}</th><th>{{ t.campus }}</th><th>{{ t.statusLabel }}</th><th>{{ t.createdAt }}</th><th>{{ t.action }}</th></tr></thead>
         <tbody><tr v-for="raw in records as AdminUserListItem[]" :key="raw.id"><td>{{ raw.username }}<small>#{{ raw.id }}</small></td><td>{{ raw.nickname }}</td><td>{{ raw.role === 1 ? t.admin : t.user }}</td><td>{{ campusText(raw) }}</td><td><span class="admin-status" :class="{ 'admin-status--warning': raw.status !== 0 }">{{ statusText(raw) }}</span></td><td>{{ formatCompactDateTime(raw.createdAt) }}</td><td><button class="text-button" type="button" :disabled="raw.id === authStore.state.user?.id" @click="queueUserAction(raw)">{{ raw.status === 1 ? t.enable : t.disable }}</button></td></tr></tbody>
       </table>
+      <table v-else-if="isReportTab" class="admin-table">
+        <thead><tr><th>#</th><th>举报人</th><th>目标</th><th>原因</th><th>状态</th><th>管理员意见</th><th>{{ t.action }}</th></tr></thead>
+        <tbody><tr v-for="raw in records as AdminReportListItem[]" :key="raw.id"><td>#{{ raw.id }}</td><td>{{ raw.reporterNickname }}<small>#{{ raw.reporterId }} · {{ formatCompactDateTime(raw.createdAt) }}</small></td><td>{{ raw.targetType }} #{{ raw.targetId }}</td><td>{{ raw.reason }}</td><td><span class="admin-status" :class="{ 'admin-status--warning': raw.status === 'PENDING' }">{{ reportStatusText(raw.status) }}</span></td><td><template v-if="raw.status === 'PENDING'"><textarea v-model="reportNotes[raw.id]" class="admin-report-note" maxlength="500" placeholder="处理说明（可选）" /></template><template v-else>{{ raw.adminNote || '—' }}<small v-if="raw.adminNickname">{{ raw.adminNickname }} · {{ raw.processedAt ? formatCompactDateTime(raw.processedAt) : '' }}</small></template></td><td><template v-if="raw.status === 'PENDING'"><button class="text-button" type="button" @click="queueReportAction(raw, 'PROCESSED')">处理</button><button class="text-button danger" type="button" @click="queueReportAction(raw, 'REJECTED')">驳回</button></template><span v-else class="muted">已完成</span></td></tr></tbody>
+      </table>
       <table v-else class="admin-table">
         <thead><tr><th>#</th><th>{{ t.admin }}</th><th>{{ t.action }}</th><th>{{ t.createdAt }}</th></tr></thead>
         <tbody><tr v-for="raw in records as AdminActionLogItem[]" :key="raw.id"><td>#{{ raw.id }}</td><td>{{ raw.adminNickname }} (#{{ raw.adminUserId }})</td><td>{{ raw.action }} · {{ raw.targetType }}<template v-if="raw.targetId"> #{{ raw.targetId }}</template></td><td>{{ formatCompactDateTime(raw.createdAt) }}</td></tr></tbody>
       </table>
     </div>
 
-    <div class="admin-pagination">
+    <div v-if="!isFeedbackTab" class="admin-pagination">
       <span>{{ t.totalPrefix }} {{ total }} {{ t.totalSuffix }} · {{ t.page }} {{ page }} / {{ pages }} {{ t.pageSuffix }}</span>
       <div><button class="secondary-button" type="button" :disabled="page <= 1 || isLoading" @click="changePage(page - 1)">{{ t.previous }}</button><button class="secondary-button" type="button" :disabled="page >= pages || isLoading" @click="changePage(page + 1)">{{ t.next }}</button></div>
     </div>
@@ -244,5 +312,13 @@ function changePage(nextPage: number): void {
 .admin-status--warning { color: #9b6b00; background: #fff6df; }
 .admin-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px; color: var(--muted); font-size: 14px; }
 .admin-pagination > div { display: flex; gap: 8px; }
-@media (max-width: 700px) { .admin-page-heading, .admin-filters, .admin-pagination { flex-direction: column; align-items: stretch; } .admin-page-heading > .secondary-button { width: 100%; justify-content: center; } .admin-filters select { width: 100%; } }
+.admin-report-note { width: 100%; min-width: 180px; min-height: 54px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; color: var(--ink); background: var(--surface); }
+.admin-feedback-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 20px; }
+.admin-feedback-card { padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.admin-feedback-card h2 { margin: 0; font-size: 18px; }
+.admin-feedback-card ol { display: grid; gap: 12px; padding: 0; margin: 18px 0 0; list-style: none; }
+.admin-feedback-card li { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.admin-feedback-card li:last-child { padding-bottom: 0; border-bottom: 0; }
+.admin-feedback-card span, .admin-feedback-card small { color: var(--muted); }
+@media (max-width: 700px) { .admin-page-heading, .admin-filters, .admin-pagination { flex-direction: column; align-items: stretch; } .admin-page-heading > .secondary-button { width: 100%; justify-content: center; } .admin-filters select { width: 100%; } .admin-feedback-grid { grid-template-columns: 1fr; } }
 </style>

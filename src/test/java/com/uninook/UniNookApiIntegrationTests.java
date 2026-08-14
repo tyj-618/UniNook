@@ -75,6 +75,74 @@ class UniNookApiIntegrationTests {
     }
 
     @Test
+    void reportsAndAssistantFeedbackCanBeReviewedByAdministrators() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String adminUsername = "ga" + suffix;
+        String authorUsername = "gu" + suffix;
+        String reporterUsername = "gr" + suffix;
+        register(adminUsername, "123456", "Governance Admin");
+        register(authorUsername, "123456", "Governance Author");
+        register(reporterUsername, "123456", "Governance Reporter");
+
+        String adminToken = login(adminUsername, "123456");
+        String authorToken = login(authorUsername, "123456");
+        String reporterToken = login(reporterUsername, "123456");
+        long adminId = get("/api/users/me", adminToken).at("/data/id").asLong();
+        jdbcTemplate.update("UPDATE `user` SET role = 1 WHERE id = ?", adminId);
+        long postId = createPost(authorToken, firstCategoryId(), "Governance post " + suffix);
+
+        JsonNode createdReport = post("/api/reports", reporterToken, Map.of(
+                "targetType", "POST",
+                "targetId", postId,
+                "reason", "Verification report reason"
+        ));
+        assertCode(createdReport, 0);
+        long reportId = createdReport.at("/data").asLong();
+
+        JsonNode pendingReports = get("/api/admin/reports?status=PENDING", adminToken);
+        assertCode(pendingReports, 0);
+        assertThat(pendingReports.at("/data/records")).anySatisfy(item -> {
+            assertThat(item.at("/id").asLong()).isEqualTo(reportId);
+            assertThat(item.at("/status").asText()).isEqualTo("PENDING");
+        });
+
+        JsonNode processed = post("/api/admin/reports/" + reportId + "/process", adminToken, Map.of(
+                "status", "PROCESSED",
+                "adminNote", "Reviewed and recorded"
+        ));
+        assertCode(processed, 0);
+        JsonNode processedReports = get("/api/admin/reports?status=PROCESSED", adminToken);
+        assertThat(processedReports.at("/data/records")).anySatisfy(item -> {
+            assertThat(item.at("/id").asLong()).isEqualTo(reportId);
+            assertThat(item.at("/status").asText()).isEqualTo("PROCESSED");
+            assertThat(item.at("/adminId").asLong()).isEqualTo(adminId);
+        });
+
+        String requestId = "feedback-" + suffix;
+        String question = "Where can I study during the weekend?";
+        assertCode(post("/api/assistant/feedback", reporterToken, Map.of(
+                "requestId", requestId,
+                "rating", "UNHELPFUL",
+                "question", question
+        )), 0);
+        assertCode(post("/api/assistant/feedback", authorToken, Map.of(
+                "requestId", requestId,
+                "rating", "HELPFUL",
+                "question", question
+        )), 0);
+
+        JsonNode feedbackStats = get("/api/admin/feedback-stats", adminToken);
+        assertCode(feedbackStats, 0);
+        assertThat(feedbackStats.at("/data/lowQualityAnswers")).anySatisfy(item -> {
+            assertThat(item.at("/requestId").asText()).isEqualTo(requestId);
+            assertThat(item.at("/helpfulCount").asLong()).isEqualTo(1);
+            assertThat(item.at("/unhelpfulCount").asLong()).isEqualTo(1);
+        });
+        assertThat(feedbackStats.at("/data/frequentQuestions")).anySatisfy(item ->
+                assertThat(item.at("/question").asText()).isEqualTo(question));
+    }
+
+    @Test
     void campusCircleCoreApiFlow() throws Exception {
         register("alice", "123456", "小艾");
         register("bob", "123456", "小林");
