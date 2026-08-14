@@ -3,7 +3,7 @@
 -- remove or overwrite user, post, comment, or existing campus records.
 
 -- Keep the connection charset explicit when this file is piped to mysql.
-SET NAMES utf8mb4;
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 INSERT INTO university (id, name, province, city, status)
 VALUES
@@ -21,7 +21,8 @@ ON DUPLICATE KEY UPDATE
 -- Ensure schools created by the pre-university schema are linked before
 -- checking whether a campus already exists.
 UPDATE school s
-JOIN university u ON u.name = s.name AND u.city = s.city
+JOIN university u ON u.name COLLATE utf8mb4_unicode_ci = s.name
+               AND u.city COLLATE utf8mb4_unicode_ci = s.city
 SET s.university_id = u.id
 WHERE s.university_id IS NULL;
 

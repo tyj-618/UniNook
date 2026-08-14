@@ -2,7 +2,7 @@
 -- 012 migration rollout. This migration never deletes data: malformed catalog
 -- rows are disabled, canonical rows are restored or inserted.
 
-SET NAMES utf8mb4;
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 START TRANSACTION;
 
 -- Restore the four built-in university records without relying on the shell
@@ -54,7 +54,8 @@ WHERE status = 0
 
 -- Link legacy valid rows after the university labels are restored.
 UPDATE school s
-JOIN university u ON u.name = s.name AND u.city = s.city
+JOIN university u ON u.name COLLATE utf8mb4_unicode_ci = s.name
+               AND u.city COLLATE utf8mb4_unicode_ci = s.city
 SET s.university_id = u.id
 WHERE s.university_id IS NULL;
 
