@@ -2,10 +2,12 @@ package com.uninook.exception;
 
 import com.uninook.common.ApiResponse;
 import com.uninook.common.ErrorCode;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.validation.BindException;
+import org.springframework.validation.FieldError;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -16,6 +18,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import java.util.List;
 import java.util.Optional;
 
 @RestControllerAdvice
@@ -31,19 +34,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValidException(MethodArgumentNotValidException exception) {
-        String message = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getDefaultMessage())
+        return validationErrorResponse(firstFieldErrorMessage(exception.getBindingResult().getFieldErrors()));
+    }
+
+    @ExceptionHandler(BindException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBindException(BindException exception) {
+        return validationErrorResponse(firstFieldErrorMessage(exception.getBindingResult().getFieldErrors()));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolationException(ConstraintViolationException exception) {
+        String message = exception.getConstraintViolations().stream()
+                .map(ConstraintViolation::getMessage)
                 .filter(value -> value != null && !value.isBlank())
                 .findFirst()
                 .orElse(ErrorCode.PARAM_ERROR.message());
-        return ResponseEntity.badRequest()
-                .body(ApiResponse.fail(ErrorCode.PARAM_ERROR.code(), message));
-    }
-
-    @ExceptionHandler({BindException.class, ConstraintViolationException.class})
-    public ResponseEntity<ApiResponse<Void>> handleValidationException(Exception exception) {
-        return ResponseEntity.badRequest()
-                .body(ApiResponse.fail(ErrorCode.PARAM_ERROR.code(), ErrorCode.PARAM_ERROR.message()));
+        return validationErrorResponse(message);
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
@@ -63,6 +69,19 @@ public class GlobalExceptionHandler {
         log.error("Unhandled exception", exception);
         return ResponseEntity.internalServerError()
                 .body(ApiResponse.fail(ErrorCode.INTERNAL_ERROR.code(), ErrorCode.INTERNAL_ERROR.message()));
+    }
+
+    private ResponseEntity<ApiResponse<Void>> validationErrorResponse(String message) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.fail(ErrorCode.PARAM_ERROR.code(), message));
+    }
+
+    private String firstFieldErrorMessage(List<FieldError> fieldErrors) {
+        return Optional.ofNullable(fieldErrors).orElse(List.of()).stream()
+                .map(FieldError::getDefaultMessage)
+                .filter(value -> value != null && !value.isBlank())
+                .findFirst()
+                .orElse(ErrorCode.PARAM_ERROR.message());
     }
 
     private HttpStatus statusOf(ErrorCode errorCode) {

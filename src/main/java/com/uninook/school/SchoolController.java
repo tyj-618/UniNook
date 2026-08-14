@@ -25,7 +25,7 @@ public class SchoolController {
 
     @GetMapping("/search")
     public ApiResponse<List<SchoolResponse>> searchSchools(
-            @RequestParam @NotBlank String keyword,
+            @RequestParam @NotBlank(message = "搜索关键词不能为空") String keyword,
             @RequestParam(defaultValue = "10") @Min(1) @Max(20) int limit) {
         return ApiResponse.success(schoolService.searchSchools(keyword, limit));
     }
@@ -43,14 +43,14 @@ public class SchoolController {
     }
 
     @GetMapping("/cities")
-    public ApiResponse<List<String>> listCities(@RequestParam @NotBlank String province) {
+    public ApiResponse<List<String>> listCities(@RequestParam @NotBlank(message = "省份不能为空") String province) {
         return ApiResponse.success(schoolService.listCities(province));
     }
 
     @GetMapping("/campuses")
     public ApiResponse<List<SchoolResponse>> listCampuses(
-            @RequestParam @NotBlank String province,
-            @RequestParam @NotBlank String city,
+            @RequestParam @NotBlank(message = "省份不能为空") String province,
+            @RequestParam @NotBlank(message = "城市不能为空") String city,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit) {
         return ApiResponse.success(schoolService.listCampuses(province, city, keyword, limit));
