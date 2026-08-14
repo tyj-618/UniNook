@@ -111,6 +111,22 @@ class AiAssistantServiceTests {
     }
 
     @Test
+    void streamsStandaloneScheduleFollowUpUsingTheOriginalTopic() throws Exception {
+        when(postRetriever.retrieve(any())).thenReturn(List.of(new RetrievedPost(
+                201L, "九龙湖自习室开放", "工作日开放至 23:00，周末开放至 22:00。", "东南大学", null)));
+
+        service.stream("Bearer token", new AiAssistantRequest("九龙湖校区自习室开放吗？",
+                CampusScope.CAMPUS, null, "schedule-follow-up"), chunk -> { });
+        service.stream("Bearer token", new AiAssistantRequest("工作日呢？",
+                CampusScope.CAMPUS, null, "schedule-follow-up"), chunk -> { });
+
+        ArgumentCaptor<RetrievalQuery> queries = ArgumentCaptor.forClass(RetrievalQuery.class);
+        verify(postRetriever, org.mockito.Mockito.times(2)).retrieve(queries.capture());
+        assertThat(queries.getAllValues().get(1).question())
+                .isEqualTo("九龙湖校区自习室开放吗？ 工作日呢？");
+    }
+
+    @Test
     void replacesUngroundedAnswersWithAnEvidenceMessageForBothResponseModes() throws Exception {
         when(postRetriever.retrieve(any())).thenReturn(List.of());
 
