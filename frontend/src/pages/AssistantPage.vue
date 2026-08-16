@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, CircleAlert, RefreshCw, Send, ThumbsDown, ThumbsUp, Trash2, X } from '@lucide/vue'
+import { Check, CircleAlert, RefreshCw, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, X } from '@lucide/vue'
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { authStore } from '../auth/auth.ts'
 import { cancelPendingAction, confirmPendingPost, streamAssistant, submitAssistantFeedback } from '../api/assistant.ts'
@@ -29,6 +29,11 @@ interface ConversationTurn {
 
 const legacySessionStorageKey = 'uninook-assistant-session-id'
 const insufficientEvidenceMessage = '当前范围内没有足够的帖子可作为可靠依据。'
+const exampleQuestions = [
+  '附近有什么适合期末复习的地方？',
+  '学校周边有什么好吃的？',
+  '最近校园里有什么活动？',
+]
 const question = ref('')
 const conversation = ref<ConversationTurn[]>(loadConversation())
 const scope = ref<CampusScope>(conversation.value.at(-1)?.scope ?? 'NEARBY_10')
@@ -74,6 +79,12 @@ async function submit(): Promise<void> {
   question.value = ''
   focusLatestTurn()
   await requestAnswer(turn)
+}
+
+function useExampleQuestion(example: string): void {
+  if (isSubmitting.value) return
+  question.value = example
+  void submit()
 }
 
 async function refreshTurn(turn: ConversationTurn): Promise<void> {
@@ -451,7 +462,17 @@ function scopeLabel(value: CampusScope): string {
         </div>
       </article>
     </section>
-    <p v-else class="assistant-empty-state">从一个校园问题开始，后续问答会保留在当前会话中。</p>
+    <div v-else class="assistant-empty-state">
+      <Sparkles class="assistant-empty-state__icon" :size="24" />
+      <h2 class="assistant-empty-state__title">校园助手</h2>
+      <p class="assistant-empty-state__desc">仅检索你当前附近校园范围内的公开帖子，并附上参考来源。</p>
+      <div class="assistant-empty-state__examples">
+        <button v-for="example in exampleQuestions" :key="example" type="button" class="assistant-example-pill"
+          :disabled="isSubmitting" @click="useExampleQuestion(example)">
+          {{ example }}
+        </button>
+      </div>
+    </div>
 
     <form class="editor-form assistant-composer" @submit.prevent="submit">
       <label>查看范围

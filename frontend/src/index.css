@@ -356,7 +356,14 @@ input:focus, textarea:focus, select:focus { border-color: var(--brand-500); box-
 .assistant-pending-post select { width: min(100%, 300px); }
 .assistant-pending-post__actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .assistant-pending-post__actions .primary-button, .assistant-pending-post__actions .secondary-button { width: auto; }
-.assistant-empty-state { margin: 0; padding: 24px; border: 1px dashed var(--border-default); border-radius: var(--radius-md); color: var(--text-tertiary); text-align: center; }
+.assistant-empty-state { display: grid; justify-items: center; gap: var(--space-2); margin: 0; padding: 44px 28px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--gradient-surface); color: var(--text-tertiary); text-align: center; }
+.assistant-empty-state__icon { color: var(--brand-500); }
+.assistant-empty-state__title { margin: 0; color: var(--text-primary); font-size: var(--text-lg); font-weight: var(--font-bold); }
+.assistant-empty-state__desc { margin: 0; color: var(--text-tertiary); font-size: var(--text-base); }
+.assistant-empty-state__examples { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--gap-lg); }
+.assistant-example-pill { padding: var(--space-2) var(--space-4); border: 1px solid var(--brand-200); border-radius: var(--radius-pill); background: var(--brand-50); color: var(--brand-700); font-size: var(--text-sm); font-weight: var(--font-bold); cursor: pointer; transition: var(--transition-all); }
+.assistant-example-pill:hover:not(:disabled) { border-color: var(--brand-500); background: var(--brand-100); transform: translateY(-1px); }
+.assistant-example-pill:disabled { opacity: 0.6; cursor: not-allowed; }
 .assistant-composer { padding: 20px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); }
 .assistant-composer__actions { display: flex; align-items: center; gap: 12px; }
 .assistant-composer__actions .primary-button { width: auto; }
