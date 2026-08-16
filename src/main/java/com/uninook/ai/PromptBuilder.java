@@ -12,6 +12,8 @@ public class PromptBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(PromptBuilder.class);
 
+    private static final int POST_CONTENT_PREVIEW_LIMIT = 600;
+
     private static final String SYSTEM_PROMPT = """
             You are the UniNook campus information assistant.
             Answer campus facts only from the supplied reference posts, in Chinese.
@@ -56,6 +58,10 @@ public class PromptBuilder {
         messages.add(new ChatMessage(ChatMessage.Role.USER, userPrompt));
         log.info("assistant requestId={} stage=prompt mode=structured messages={} references={}",
                 AiRequestContext.requestId(), messages.size(), posts.size());
+        if (log.isDebugEnabled()) {
+            log.debug("assistant requestId={} stage=prompt mode=structured content={}",
+                    AiRequestContext.requestId(), userPrompt);
+        }
         return new AiModelRequest(SYSTEM_PROMPT, userPrompt, messages);
     }
 
@@ -81,6 +87,10 @@ public class PromptBuilder {
         messages.add(new ChatMessage(ChatMessage.Role.USER, userPrompt));
         log.info("assistant requestId={} stage=prompt mode=stream messages={} references={}",
                 AiRequestContext.requestId(), messages.size(), posts.size());
+        if (log.isDebugEnabled()) {
+            log.debug("assistant requestId={} stage=prompt mode=stream content={}",
+                    AiRequestContext.requestId(), userPrompt);
+        }
         return new AiModelRequest(SYSTEM_PROMPT, userPrompt, messages);
     }
 
@@ -101,6 +111,10 @@ public class PromptBuilder {
         messages.add(new ChatMessage(ChatMessage.Role.USER, userPrompt));
         log.info("assistant requestId={} stage=prompt mode=agent messages={} historyMessages={}",
                 AiRequestContext.requestId(), messages.size(), history == null ? 0 : history.size());
+        if (log.isDebugEnabled()) {
+            log.debug("assistant requestId={} stage=prompt mode=agent content={}",
+                    AiRequestContext.requestId(), userPrompt);
+        }
         return new AiModelRequest(AGENT_SYSTEM_PROMPT, userPrompt, messages);
     }
 
@@ -113,7 +127,8 @@ public class PromptBuilder {
                 createdAt: %s
                 content: %s
                 </post>
-                """.formatted(post.id(), post.schoolName(), post.title(), post.createdAt(), truncate(post.content(), 600));
+                """.formatted(post.id(), post.schoolName(), post.title(), post.createdAt(),
+                        truncate(post.content(), POST_CONTENT_PREVIEW_LIMIT));
     }
 
     private String truncate(String content, int maxLength) {

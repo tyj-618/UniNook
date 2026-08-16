@@ -3,10 +3,14 @@ package com.uninook.question;
 import com.uninook.ai.AiModelClient;
 import com.uninook.ai.AiModelRequest;
 import com.uninook.ai.AiProperties;
+import com.uninook.ai.AiRequestContext;
 import com.uninook.ai.AiRequestRateLimiter;
 import com.uninook.ai.AiTextResult;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
@@ -16,6 +20,17 @@ import java.util.UUID;
 
 @Service
 public class CandidateAnswerAiReviewer {
+
+    private static final Logger log = LoggerFactory.getLogger(CandidateAnswerAiReviewer.class);
+
+    private static final int MIN_RELEVANCE_SCORE = 0;
+    private static final int MAX_RELEVANCE_SCORE = 100;
+    private static final int HEURISTIC_BASE_SCORE = 30;
+    private static final int HEURISTIC_OVERLAP_WEIGHT = 70;
+    private static final int RELEVANT_SCORE_THRESHOLD = 60;
+    private static final int UNCERTAIN_SCORE_THRESHOLD = 40;
+    private static final int DEFAULT_RELEVANCE_SCORE = 50;
+    private static final int MAX_RATIONALE_LENGTH = 80;
 
     private static final String SYSTEM_PROMPT = """
             你是校园社区的问题答复辅助审核员。你只能判断候选答复是否回应了问题，不能判断事实真伪，
@@ -46,12 +61,16 @@ public class CandidateAnswerAiReviewer {
         AiTextResult result = aiModelClient.generateText(new AiModelRequest(SYSTEM_PROMPT, buildUserPrompt(question, answer)));
         try {
             JsonNode payload = objectMapper.readTree(result.content());
-            int score = clamp(payload.path("score").asInt(50));
+            int score = clamp(payload.path("score").asInt(DEFAULT_RELEVANCE_SCORE));
             CandidateAnswerAiVerdict verdict = CandidateAnswerAiVerdict.valueOf(
                     payload.path("verdict").asText("UNCERTAIN").trim().toUpperCase(Locale.ROOT));
-            String rationale = limit(payload.path("reason").asText("模型未提供具体理由。"), 80);
+            String rationale = limit(payload.path("reason").asText("模型未提供具体理由。"), MAX_RATIONALE_LENGTH);
             return new CandidateAnswerAiReviewResponse(score, verdict, rationale, true, result.requestId());
-        } catch (Exception ignored) {
+        } catch (JsonProcessingException | IllegalArgumentException exception) {
+            // Expected degradation path: malformed model output (invalid JSON or unknown verdict).
+            // Other runtime exceptions deliberately propagate so code bugs stay visible.
+            log.warn("review requestId={} status=model-output-invalid providerRequestId={} reason={}",
+                    AiRequestContext.requestId(), result.requestId(), exception.toString());
             CandidateAnswerAiReviewResponse fallback = reviewWithLocalHeuristic(question, answer);
             return new CandidateAnswerAiReviewResponse(
                     fallback.relevanceScore(),
@@ -70,9 +89,13 @@ public class CandidateAnswerAiReviewer {
         for (String token : questionBigrams) {
             if (answerBigrams.contains(token)) overlap++;
         }
-        int score = questionBigrams.isEmpty() ? 50 : clamp(30 + (int) Math.round(70.0 * overlap / questionBigrams.size()));
-        CandidateAnswerAiVerdict verdict = score >= 60 ? CandidateAnswerAiVerdict.RELEVANT
-                : score >= 40 ? CandidateAnswerAiVerdict.UNCERTAIN : CandidateAnswerAiVerdict.IRRELEVANT;
+        int score = questionBigrams.isEmpty()
+                ? DEFAULT_RELEVANCE_SCORE
+                : clamp(HEURISTIC_BASE_SCORE + (int) Math.round(
+                        (double) HEURISTIC_OVERLAP_WEIGHT * overlap / questionBigrams.size()));
+        CandidateAnswerAiVerdict verdict = score >= RELEVANT_SCORE_THRESHOLD ? CandidateAnswerAiVerdict.RELEVANT
+                : score >= UNCERTAIN_SCORE_THRESHOLD ? CandidateAnswerAiVerdict.UNCERTAIN
+                        : CandidateAnswerAiVerdict.IRRELEVANT;
         String rationale = switch (verdict) {
             case RELEVANT -> "候选答复与问题存在明确的关键词或场景关联，请结合事实性进一步确认。";
             case UNCERTAIN -> "候选答复可能相关，但信息关联度不足，建议人工核对是否真正解决问题。";
@@ -100,7 +123,7 @@ public class CandidateAnswerAiReviewer {
     }
 
     private int clamp(int value) {
-        return Math.max(0, Math.min(100, value));
+        return Math.max(MIN_RELEVANCE_SCORE, Math.min(MAX_RELEVANCE_SCORE, value));
     }
 
     private String limit(String value, int maxLength) {

@@ -5,6 +5,7 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -58,7 +59,7 @@ public class ViewCountService implements InitializingBean, DisposableBean {
 
     public void flushPendingViews() {
         Map<Long, LongAdder> batch = drainPendingViewCounts();
-        RuntimeException firstFailure = null;
+        DataAccessException firstFailure = null;
         for (Map.Entry<Long, LongAdder> entry : batch.entrySet()) {
             long delta = entry.getValue().sum();
             if (delta <= 0) {
@@ -66,7 +67,9 @@ public class ViewCountService implements InitializingBean, DisposableBean {
             }
             try {
                 viewCountMapper.increaseViewCount(entry.getKey(), delta);
-            } catch (RuntimeException exception) {
+            } catch (DataAccessException exception) {
+                // Only persistence failures are requeued for retry; unexpected runtime exceptions
+                // propagate instead of being silently requeued so code bugs stay visible.
                 requeue(entry.getKey(), delta);
                 LOGGER.warn("Failed to flush view count; delta was requeued: postId={}, delta={}",
                         entry.getKey(), delta, exception);
@@ -108,6 +111,8 @@ public class ViewCountService implements InitializingBean, DisposableBean {
         try {
             flushPendingViews();
         } catch (Exception exception) {
+            // Scheduler boundary: a failing flush must never terminate the scheduled task; pending
+            // deltas were already requeued where possible and will be retried on the next tick.
             LOGGER.warn("View-count flush failed; pending deltas will be retried", exception);
         }
     }

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -60,7 +61,7 @@ public class ElasticsearchPostIndexClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientResponseException exception) {
-            if (exception.getStatusCode().value() != 404) {
+            if (exception.getStatusCode().value() != HttpStatus.NOT_FOUND.value()) {
                 throw exception;
             }
         }
@@ -139,7 +140,7 @@ public class ElasticsearchPostIndexClient {
                 initialized = true;
                 return;
             } catch (RestClientResponseException exception) {
-                if (exception.getStatusCode().value() != 404) {
+                if (exception.getStatusCode().value() != HttpStatus.NOT_FOUND.value()) {
                     throw exception;
                 }
             }

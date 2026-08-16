@@ -6,7 +6,10 @@ import com.uninook.post.PostMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
 
@@ -52,7 +55,10 @@ public class PostSearchIndexService {
             }
             String searchText = documentBuilder.buildSearchText(post);
             indexClient.upsert(documentBuilder.build(post, embeddingClient.embed(searchText)));
-        } catch (RuntimeException exception) {
+        } catch (RestClientResponseException | ResourceAccessException | DataAccessException exception) {
+            // Infrastructure failures only: the search index is a derived, rebuildable copy, so a
+            // single reconciliation attempt may be skipped. Other runtime exceptions propagate so
+            // code bugs are not masked (see rebuildAll for a manual recovery path).
             log.warn("Failed to reconcile Elasticsearch document for post {}", event.postId(), exception);
         }
     }

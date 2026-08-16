@@ -21,6 +21,7 @@ public class AdminService {
     private static final int USER_STATUS_DISABLED = 1;
     private static final int POST_STATUS_NORMAL = 0;
     private static final int POST_STATUS_HIDDEN = 2;
+    private static final int FEEDBACK_STATS_LIMIT = 20;
 
     private final CurrentUserService currentUserService;
     private final UserMapper userMapper;
@@ -134,12 +135,12 @@ public class AdminService {
 
     public AdminFeedbackStatsResponse feedbackStats(String authorization) {
         requireAdmin(authorization);
-        var lowQualityAnswers = adminMapper.selectFeedbackRatingSummaries(20).stream()
+        var lowQualityAnswers = adminMapper.selectFeedbackRatingSummaries(FEEDBACK_STATS_LIMIT).stream()
                 .map(summary -> new LowQualityAnswerItem(summary.requestId(), summary.helpfulCount(),
                         summary.unhelpfulCount(), summary.unhelpfulRate()))
                 .sorted((left, right) -> Double.compare(right.unhelpfulRate(), left.unhelpfulRate()))
                 .toList();
-        return new AdminFeedbackStatsResponse(lowQualityAnswers, adminMapper.selectFrequentQuestions(20));
+        return new AdminFeedbackStatsResponse(lowQualityAnswers, adminMapper.selectFrequentQuestions(FEEDBACK_STATS_LIMIT));
     }
 
     private void publishIndexEventAfterCommit(Long postId) {

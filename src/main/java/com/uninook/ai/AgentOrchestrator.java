@@ -25,6 +25,7 @@ public class AgentOrchestrator {
     private static final Pattern POST_CONTENT_PATTERN = Pattern.compile("内容\\s*(?:是|为)?\\s*[“\\\"']?([^”\\\"'。]+)");
     private static final String REPETITION_MESSAGE = "这一步没有新信息，请换思路或给出当前最佳答案。";
     private static final String VALIDATION_PREFIX = "工具参数校验失败：";
+    private static final int CONSECUTIVE_REPEAT_THRESHOLD = 2;
     private final AiModelClient aiModelClient;
     private final ToolRegistry toolRegistry;
     private final ToolCallExecutor toolCallExecutor;
@@ -143,7 +144,7 @@ public class AgentOrchestrator {
                     previousFingerprint = fingerprint;
                     consecutiveRepeatCount = 1;
                 }
-                if (consecutiveRepeatCount >= 2) {
+                if (consecutiveRepeatCount >= CONSECUTIVE_REPEAT_THRESHOLD) {
                     messages.add(new ChatMessage(ChatMessage.Role.TOOL, REPETITION_MESSAGE, toolCall.id()));
                     continue;
                 }

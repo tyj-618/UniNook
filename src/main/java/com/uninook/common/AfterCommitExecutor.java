@@ -29,6 +29,8 @@ public class AfterCommitExecutor {
         try {
             action.run();
         } catch (RuntimeException exception) {
+            // Deliberate boundary: the transaction has already committed, so a failing side effect
+            // cannot roll anything back; it is logged and isolated from the calling request.
             log.warn("Post-commit side effect failed", exception);
         }
     }

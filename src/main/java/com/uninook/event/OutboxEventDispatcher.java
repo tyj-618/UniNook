@@ -15,6 +15,8 @@ public class OutboxEventDispatcher {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxEventDispatcher.class);
     private static final int BATCH_SIZE = 50;
+    private static final int MAX_RETRY_DELAY_SECONDS = 300;
+    private static final int MAX_RETRY_BACKOFF_EXPONENT = 8;
 
     private final OutboxEventMapper outboxEventMapper;
     private final OutboxMessageSender messageSender;
@@ -40,7 +42,10 @@ public class OutboxEventDispatcher {
             messageSender.send(eventType, deserialize(eventType, event.getPayload()));
             outboxEventMapper.markPublished(event.getId());
         } catch (RuntimeException | JsonProcessingException exception) {
-            int retryDelaySeconds = Math.min(300, 1 << Math.min(event.getRetryCount(), 8));
+            // Outbox semantics: the event is persisted and must eventually be delivered, so every
+            // dispatch failure is retried with capped exponential backoff instead of propagating.
+            int retryDelaySeconds = Math.min(MAX_RETRY_DELAY_SECONDS,
+                    1 << Math.min(event.getRetryCount(), MAX_RETRY_BACKOFF_EXPONENT));
             outboxEventMapper.scheduleRetry(event.getId(), retryDelaySeconds);
             log.warn("Failed to dispatch outbox event {}", event.getId(), exception);
         }
