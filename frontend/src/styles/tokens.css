@@ -1,0 +1,201 @@
+/* UniNook Design Tokens — 清新校园风 v1.0
+ * 规范来源：docs/uninook-design-language.md 第一章
+ */
+:root {
+  /* === 品牌色 === */
+  --brand-50:   #edf8f4;
+  --brand-100:  #d4f0e6;
+  --brand-200:  #a8e0cd;
+  --brand-300:  #6dc9a8;
+  --brand-400:  #2eaa82;
+  --brand-500:  #0e9e74;
+  --brand-600:  #0b8260;
+  --brand-700:  #08664b;
+  --brand-800:  #064a37;
+  --brand-900:  #042f23;
+
+  /* === 语义色 === */
+  /* 成功 */
+  --success-bg:     #edf8f1;
+  --success-border: #9bcbb3;
+  --success-text:   #19734c;
+  --success-icon:   #22915f;
+
+  /* 警告 */
+  --warning-bg:     #fffcf3;
+  --warning-border: #e3cf95;
+  --warning-text:   #81691b;
+  --warning-icon:   #a68520;
+
+  /* 错误/危险 */
+  --danger-bg:      #fff3f3;
+  --danger-border:  #e7c5c5;
+  --danger-text:    #b42318;
+  --danger-icon:    #d03027;
+  --danger-700:     #921d26;
+
+  /* 信息/提示 */
+  --info-bg:        #f0f6ff;
+  --info-border:    #b3d0f7;
+  --info-text:      #1a5fa1;
+  --info-icon:      #2874c0;
+
+  /* === 中性色 === */
+  /* 文字 */
+  --text-primary:    #1a2e26;
+  --text-secondary:  #4a5e54;
+  --text-tertiary:   #6d8178;
+  --text-disabled:   #9aaba3;
+  --text-inverse:    #ffffff;
+
+  /* 背景 */
+  --bg-page:         #f5f9f7;
+  --bg-surface:      #ffffff;
+  --bg-subtle:       #f8fbf9;
+  --bg-muted:        #edf3ef;
+  --bg-overlay:      rgba(15, 31, 25, 0.42);
+  --bg-overlay-light: rgba(15, 31, 25, 0.28);
+
+  /* 边框 */
+  --border-subtle:   #e4ebe7;
+  --border-default:  #d0dbd5;
+  --border-strong:   #a8bdb1;
+  --border-brand:    var(--brand-500);
+
+  /* 头像底色 */
+  --avatar-bg:       #dff0e9;
+  --avatar-text:     var(--brand-600);
+
+  /* === 渐变 === */
+  --gradient-brand:  linear-gradient(135deg, var(--brand-500) 0%, var(--brand-400) 100%);
+  --gradient-surface: linear-gradient(180deg, var(--bg-subtle) 0%, var(--bg-page) 100%);
+  --gradient-campus: linear-gradient(90deg, var(--brand-50) 0%, transparent 60%);
+
+  /* === 字体 === */
+  --font-sans:  'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+
+  /* 字号阶梯 */
+  --text-xs:    0.75rem;
+  --text-sm:    0.8125rem;
+  --text-base:  0.875rem;
+  --text-md:    1rem;
+  --text-lg:    1.125rem;
+  --text-xl:    1.25rem;
+  --text-2xl:   1.5rem;
+  --text-3xl:   1.875rem;
+
+  /* 字重 */
+  --font-normal:    400;
+  --font-medium:    500;
+  --font-semibold:  600;
+  --font-bold:      700;
+  --font-extrabold: 800;
+
+  /* 行高 */
+  --leading-tight:   1.25;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.7;
+  --leading-loose:   1.85;
+
+  /* 字间距 */
+  --tracking-tight:  -0.01em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.02em;
+  --tracking-eyebrow: 0.06em;
+
+  /* === 间距 === */
+  --space-0:   0;
+  --space-1:   0.25rem;
+  --space-2:   0.5rem;
+  --space-3:   0.75rem;
+  --space-4:   1rem;
+  --space-5:   1.25rem;
+  --space-6:   1.5rem;
+  --space-8:   2rem;
+  --space-10:  2.5rem;
+  --space-12:  3rem;
+  --space-16:  4rem;
+
+  /* 语义间距 */
+  --gap-xs:    var(--space-2);
+  --gap-sm:    var(--space-3);
+  --gap-md:    var(--space-4);
+  --gap-lg:    var(--space-6);
+  --gap-xl:    var(--space-8);
+
+  /* 内边距 */
+  --padding-input:   0.5625rem 0.75rem;
+  --padding-button:  0.5625rem 1rem;
+  --padding-card:    var(--space-5);
+  --padding-panel:   var(--space-6);
+  --padding-page:    var(--space-8);
+
+  /* === 圆角 === */
+  --radius-sm:    6px;
+  --radius-md:    10px;
+  --radius-lg:    14px;
+  --radius-xl:    20px;
+  --radius-full:  9999px;
+
+  /* 语义圆角 */
+  --radius-button:  var(--radius-sm);
+  --radius-input:   var(--radius-sm);
+  --radius-card:    var(--radius-md);
+  --radius-dialog:  var(--radius-md);
+  --radius-avatar:  var(--radius-full);
+  --radius-badge:   var(--radius-full);
+  --radius-pill:    var(--radius-full);
+
+  /* === 阴影 === */
+  --shadow-xs:   0 1px 2px rgba(15, 31, 25, 0.04);
+  --shadow-sm:   0 2px 8px rgba(15, 31, 25, 0.06);
+  --shadow-md:   0 4px 16px rgba(15, 31, 25, 0.08);
+  --shadow-lg:   0 8px 24px rgba(15, 31, 25, 0.10);
+  --shadow-xl:   0 16px 48px rgba(15, 31, 25, 0.14);
+
+  /* 语义阴影 */
+  --shadow-card:         var(--shadow-sm);
+  --shadow-card-hover:   var(--shadow-md);
+  --shadow-dialog:       var(--shadow-xl);
+  --shadow-button:       0 2px 6px rgba(14, 158, 116, 0.18);
+  --shadow-button-hover: 0 4px 12px rgba(14, 158, 116, 0.24);
+  --shadow-focus-ring:   0 0 0 3px rgba(14, 158, 116, 0.18);
+  --shadow-focus-input:  0 0 0 3px rgba(14, 158, 116, 0.12);
+
+  /* === 动效 === */
+  --duration-instant:  100ms;
+  --duration-fast:     150ms;
+  --duration-normal:   200ms;
+  --duration-slow:     300ms;
+  --duration-slower:   500ms;
+
+  --ease-default:   cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in:        cubic-bezier(0.4, 0, 1, 1);
+  --ease-out:       cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce:    cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --transition-color:     color var(--duration-fast) var(--ease-default),
+                          background-color var(--duration-fast) var(--ease-default),
+                          border-color var(--duration-fast) var(--ease-default);
+  --transition-shadow:    box-shadow var(--duration-normal) var(--ease-default);
+  --transition-transform: transform var(--duration-normal) var(--ease-default);
+  --transition-opacity:   opacity var(--duration-normal) var(--ease-default);
+  --transition-all:       var(--transition-color), var(--transition-shadow), var(--transition-transform);
+
+  /* === 层级 === */
+  --z-base:      0;
+  --z-dropdown:  10;
+  --z-sticky:    20;
+  --z-overlay:   40;
+  --z-modal:     50;
+  --z-toast:     60;
+  --z-tooltip:   70;
+
+  /* === 断点（仅作记录，媒体查询中不能直接使用 var） === */
+  --bp-sm:   480px;
+  --bp-md:   720px;
+  --bp-lg:   1024px;
+  --bp-xl:   1280px;
+  --bp-2xl:  1536px;
+}
