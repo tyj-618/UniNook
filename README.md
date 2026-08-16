@@ -9,7 +9,7 @@
 
 ## 在线演示
 
- [joinuninook.com](https://joinuninook.com)
+🔗 [joinuninook.com](https://joinuninook.com)
 
 ## 功能概览
 
@@ -24,7 +24,7 @@
 - **SSE 流式输出**：逐字显示，带闪烁光标
 - **Agent 编排**：ReAct 循环 + 工具调用（检索帖子）
 - **确认发帖**：AI 生成草稿 → 用户确认 → 发布到社区
-- **反馈机制**：👎 评价回答质量
+- **反馈机制**：👍👎 评价回答质量
 
 ### 管理后台
 - **内容管理**：帖子隐藏/恢复、用户禁用/启用
@@ -53,23 +53,14 @@
 
 ## 项目截图
 
-### 登录页
-![登录页](docs/screenshots/01-login.png)
-
-### 校园动态
-![校园动态](docs/screenshots/02-feed.png)
-
-### 帖子详情
-![帖子详情](docs/screenshots/03-post-detail.png)
-
-### 助手 - 空状态引导
-![助手空状态](docs/screenshots/04-assistant-empty.png)
-
-### 助手 - 对话中
-![助手对话](docs/screenshots/05-assistant-chat.png)
-
-### 管理后台
-![管理后台](docs/screenshots/06-admin.png)
+| | |
+|:---:|:---:|
+| 登录页 | 校园动态 |
+| ![登录页](docs/screenshots/01-login.png) | ![校园动态](docs/screenshots/02-feed.png) |
+| 帖子详情 | AI 助手对话 |
+| ![帖子详情](docs/screenshots/03-post-detail.png) | ![助手对话](docs/screenshots/05-assistant-chat.png) |
+| 助手空状态引导 | 管理后台 |
+| ![助手空状态](docs/screenshots/04-assistant-empty.png) | ![管理后台](docs/screenshots/06-admin.png) |
 
 ## 架构设计
 
@@ -127,16 +118,16 @@ docker compose up -d --build
 ```
 UniNook/
 ├── src/main/java/com/uninook/
-│   ├── ai/              # AI 助手（Agent 编排/RAG/工具调用）
+│   ├── ai/              # AI 助手（Agent 编排 / RAG / 工具调用）
 │   ├── admin/           # 管理后台
-│   ├── post/            # 帖子/评论
+│   ├── post/            # 帖子 / 评论
 │   ├── question/        # 问题追踪
 │   ├── report/          # 举报
-│   ├── user/            # 用户/认证
+│   ├── user/            # 用户 / 认证
 │   └── notification/    # 通知
 ├── frontend/            # Vue 3 前端
-├── scripts/             # 运维脚本（备份/健康检查）
-└── docs/                # 文档（设计语言/部署手册）
+├── scripts/             # 运维脚本（备份 / 健康检查）
+└── docs/                # 文档（设计语言 / 部署手册）
 ```
 
 ## 测试
