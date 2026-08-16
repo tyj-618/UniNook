@@ -481,16 +481,16 @@ function scopeLabel(value: CampusScope): string {
   flex-wrap: wrap;
   gap: 0.45rem;
   margin-top: 1rem;
-  color: var(--muted);
+  color: var(--text-tertiary);
   font-size: 0.9rem;
 }
 
 .assistant-feedback .active {
-  color: var(--accent);
+  color: var(--brand-600);
 }
 
 .assistant-feedback__status {
-  color: var(--accent);
+  color: var(--brand-600);
   font-size: 0.82rem;
 }
 
@@ -499,7 +499,7 @@ function scopeLabel(value: CampusScope): string {
   align-items: center;
   gap: 0.35rem;
   margin: 0.5rem 0 0;
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 0.88rem;
 }
 </style>

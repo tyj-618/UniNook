@@ -14,6 +14,9 @@
   --brand-800:  #064a37;
   --brand-900:  #042f23;
 
+  /* 品牌色 tint — 极淡的品牌色透明叠加 */
+  --brand-tint-3:  rgba(14, 158, 116, 0.03);
+
   /* === 语义色 === */
   /* 成功 */
   --success-bg:     #edf8f1;
@@ -162,6 +165,7 @@
   --shadow-button-hover: 0 4px 12px rgba(14, 158, 116, 0.24);
   --shadow-focus-ring:   0 0 0 3px rgba(14, 158, 116, 0.18);
   --shadow-focus-input:  0 0 0 3px rgba(14, 158, 116, 0.12);
+  --shadow-danger-ring:  0 0 0 3px rgba(180, 35, 24, 0.10);
 
   /* === 动效 === */
   --duration-instant:  100ms;

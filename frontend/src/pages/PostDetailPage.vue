@@ -596,8 +596,8 @@ onBeforeUnmount(() => activeRequest?.abort())
 
 <style scoped>
 .post-detail-actions { display: flex; align-items: center; gap: 0.75rem; }
-.report-dialog-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 35%); }
-.report-dialog { width: min(100%, 520px); display: grid; gap: 1rem; padding: 1.5rem; border-radius: 14px; background: var(--surface); box-shadow: 0 18px 45px rgb(0 0 0 / 18%); }
+.report-dialog-backdrop { position: fixed; inset: 0; z-index: var(--z-overlay); display: grid; place-items: center; padding: 1rem; background: var(--bg-overlay); }
+.report-dialog { width: min(100%, 520px); display: grid; gap: 1rem; padding: 1.5rem; border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-dialog); }
 .report-dialog h2 { margin: 0; }
-.report-dialog textarea { width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem; font: inherit; color: var(--ink); background: var(--surface); }
+.report-dialog textarea { width: 100%; resize: vertical; border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0.75rem; font: inherit; color: var(--text-primary); background: var(--bg-surface); }
 </style>

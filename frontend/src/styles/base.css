@@ -28,7 +28,7 @@ a { color: inherit; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--border-default);
-  border-radius: 3px;
+  border-radius: calc(var(--radius-sm) / 2);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-strong);
