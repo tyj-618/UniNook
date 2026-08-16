@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import axios from 'axios'
 import { Eye, Heart, MapPinned, MessageCircle, PenLine, RefreshCw } from '@lucide/vue'
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorMessageOf } from '../api/errors.ts'
 import { getNearbyFeed } from '../api/posts.ts'
@@ -22,10 +22,14 @@ const scope = ref<CampusScope>('NEARBY_10')
 const sort = ref<'latest' | 'hot'>('latest')
 const posts = ref<PostListItem[]>([])
 const isLoading = ref(true)
+const isLoadingMore = ref(false)
+const currentPage = ref(1)
+const totalPages = ref(1)
 const errorMessage = ref('')
 let activeRequest: AbortController | null = null
+const hasMore = computed(() => currentPage.value < totalPages.value)
 
-async function loadFeed(): Promise<void> {
+async function loadFirstPage(): Promise<void> {
   activeRequest?.abort()
   const request = new AbortController()
   activeRequest = request
@@ -39,6 +43,8 @@ async function loadFeed(): Promise<void> {
     )
     if (activeRequest === request) {
       posts.value = page.records
+      currentPage.value = page.page
+      totalPages.value = page.records.length < page.size ? page.page : page.pages
     }
   } catch (error) {
     if (!axios.isCancel(error) && activeRequest === request) {
@@ -49,6 +55,24 @@ async function loadFeed(): Promise<void> {
       isLoading.value = false
       activeRequest = null
     }
+  }
+}
+
+async function loadMore(): Promise<void> {
+  if (isLoading.value || isLoadingMore.value || !hasMore.value) return
+  isLoadingMore.value = true
+  errorMessage.value = ''
+
+  const nextPage = currentPage.value + 1
+  try {
+    const page = await getNearbyFeed({ scope: scope.value, sort: sort.value, page: nextPage, size: 10 })
+    posts.value = [...posts.value, ...page.records]
+    currentPage.value = page.page
+    totalPages.value = page.records.length < page.size ? page.page : page.pages
+  } catch (error) {
+    errorMessage.value = errorMessageOf(error, '加载更多失败，请稍后重试。')
+  } finally {
+    isLoadingMore.value = false
   }
 }
 
@@ -84,7 +108,7 @@ watch(
     scope.value = readScope()
     sort.value = readSort()
     saveFeedPreferences({ scope: scope.value, sort: sort.value })
-    void loadFeed()
+    void loadFirstPage()
   },
   { immediate: true },
 )
@@ -99,7 +123,7 @@ onBeforeUnmount(() => activeRequest?.abort())
         <h1>校园动态</h1>
         <p class="muted">按距离查看你所在学校及附近高校的讨论。</p>
       </div>
-      <div class="page-actions"><RouterLink class="icon-button" :to="{ name: 'post-create' }" aria-label="发布讨论"><PenLine :size="18" /></RouterLink><button class="icon-button" type="button" aria-label="刷新校园动态" @click="loadFeed"><RefreshCw :size="18" /></button></div>
+      <div class="page-actions"><RouterLink class="icon-button" :to="{ name: 'post-create' }" aria-label="发布讨论"><PenLine :size="18" /></RouterLink><button class="icon-button" type="button" aria-label="刷新校园动态" @click="loadFirstPage"><RefreshCw :size="18" /></button></div>
     </div>
 
     <section class="feed-toolbar" aria-label="动态筛选">
@@ -118,7 +142,7 @@ onBeforeUnmount(() => activeRequest?.abort())
     <section v-else-if="errorMessage" class="empty-feed">
       <h2>加载失败</h2>
       <p>{{ errorMessage }}</p>
-      <button class="primary-button" type="button" @click="loadFeed">重新加载</button>
+      <button class="primary-button" type="button" @click="loadFirstPage">重新加载</button>
     </section>
     <section v-else-if="posts.length === 0" class="empty-feed">
       <MapPinned :size="24" />
@@ -150,5 +174,11 @@ onBeforeUnmount(() => activeRequest?.abort())
           </div>
       </article>
     </section>
+    <div v-if="!isLoading && !errorMessage && posts.length" class="feed-more">
+      <button v-if="hasMore" class="secondary-button" type="button" :disabled="isLoadingMore" @click="loadMore">
+        {{ isLoadingMore ? '加载中…' : '加载更多' }}
+      </button>
+      <p v-else class="feed-more__end">已经到底了</p>
+    </div>
   </section>
 </template>
