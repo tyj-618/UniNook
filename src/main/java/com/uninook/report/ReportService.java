@@ -30,6 +30,9 @@ public class ReportService {
         if (reporterId.equals(authorId)) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "不能举报自己发布的内容");
         }
+        if (reportMapper.countPendingReports(reporterId, targetType.name(), request.targetId()) > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "您已举报过该内容，处理完成前请勿重复提交");
+        }
 
         ReportRecord report = new ReportRecord();
         report.setReporterId(reporterId);

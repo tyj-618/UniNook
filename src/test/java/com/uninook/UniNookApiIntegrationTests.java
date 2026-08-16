@@ -437,6 +437,220 @@ class UniNookApiIntegrationTests {
     }
 
     @Test
+    void duplicatePendingReportsOnTheSameTargetAreRejected() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String authorUsername = "rpa" + suffix;
+        String reporterUsername = "rpr" + suffix;
+        register(authorUsername, "123456", "Report Author");
+        register(reporterUsername, "123456", "Report Reporter");
+        String authorToken = login(authorUsername, "123456");
+        String reporterToken = login(reporterUsername, "123456");
+        long postId = createPost(authorToken, firstCategoryId(), "Duplicate report target " + suffix);
+
+        assertCode(post("/api/reports", reporterToken, Map.of(
+                "targetType", "POST",
+                "targetId", postId,
+                "reason", "First report"
+        )), 0);
+
+        JsonNode duplicate = post("/api/reports", reporterToken, Map.of(
+                "targetType", "POST",
+                "targetId", postId,
+                "reason", "Second report while pending"
+        ));
+        assertCode(duplicate, 40900);
+    }
+
+    @Test
+    void administratorsCannotProcessAnAlreadyProcessedReport() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String adminUsername = "rxa" + suffix;
+        String authorUsername = "rxc" + suffix;
+        String reporterUsername = "rxr" + suffix;
+        register(adminUsername, "123456", "Reprocess Admin");
+        register(authorUsername, "123456", "Reprocess Author");
+        register(reporterUsername, "123456", "Reprocess Reporter");
+        String adminToken = login(adminUsername, "123456");
+        String authorToken = login(authorUsername, "123456");
+        String reporterToken = login(reporterUsername, "123456");
+        long adminId = get("/api/users/me", adminToken).at("/data/id").asLong();
+        jdbcTemplate.update("UPDATE `user` SET role = 1 WHERE id = ?", adminId);
+        long postId = createPost(authorToken, firstCategoryId(), "Reprocess report target " + suffix);
+
+        JsonNode createdReport = post("/api/reports", reporterToken, Map.of(
+                "targetType", "POST",
+                "targetId", postId,
+                "reason", "Report for reprocess check"
+        ));
+        assertCode(createdReport, 0);
+        long reportId = createdReport.at("/data").asLong();
+
+        assertCode(post("/api/admin/reports/" + reportId + "/process", adminToken, Map.of(
+                "status", "PROCESSED",
+                "adminNote", "First processing"
+        )), 0);
+
+        JsonNode reprocessing = post("/api/admin/reports/" + reportId + "/process", adminToken, Map.of(
+                "status", "PROCESSED",
+                "adminNote", "Second processing attempt"
+        ));
+        assertCode(reprocessing, 40000);
+
+        JsonNode nonexistent = post("/api/admin/reports/999999999/process", adminToken, Map.of(
+                "status", "PROCESSED"
+        ));
+        assertCode(nonexistent, 40400);
+    }
+
+    @Test
+    void anotherUserCannotConfirmSomeoneElsesPendingDraft() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String ownerUsername = "cpo" + suffix;
+        String strangerUsername = "cps" + suffix;
+        String title = "Cross-user confirm " + suffix;
+        register(ownerUsername, "123456", "Draft Owner");
+        register(strangerUsername, "123456", "Draft Stranger");
+        String ownerToken = login(ownerUsername, "123456");
+        String strangerToken = login(strangerUsername, "123456");
+
+        JsonNode draft = post("/api/ai/assistant/ask", ownerToken, Map.of(
+                "question", "帮我发布一条帖子，标题是“" + title + "”，内容是“仅用于越权确认测试”。",
+                "radiusKm", 10
+        ));
+        assertThat(draft.at("/code").asInt()).isZero();
+        String actionId = draft.at("/data/pendingAction/actionId").asText();
+        assertThat(actionId).isNotBlank();
+
+        JsonNode hijack = post("/api/ai/pending-actions/" + actionId + "/confirm", strangerToken, Map.of(
+                "categoryId", firstCategoryId()
+        ));
+        assertCode(hijack, 40400);
+
+        JsonNode ownerConfirmation = post("/api/ai/pending-actions/" + actionId + "/confirm", ownerToken, Map.of(
+                "categoryId", firstCategoryId()
+        ));
+        assertCode(ownerConfirmation, 0);
+    }
+
+    @Test
+    void assistantDraftConfirmationFlowsIntoGovernanceAndAuditTrail() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String authorUsername = "cha" + suffix;
+        String adminUsername = "chad" + suffix;
+        String reporterUsername = "chr" + suffix;
+        String title = "Chain post " + suffix;
+        register(authorUsername, "123456", "Chain Author");
+        register(adminUsername, "123456", "Chain Admin");
+        register(reporterUsername, "123456", "Chain Reporter");
+        String authorToken = login(authorUsername, "123456");
+        String adminToken = login(adminUsername, "123456");
+        String reporterToken = login(reporterUsername, "123456");
+        long adminId = get("/api/users/me", adminToken).at("/data/id").asLong();
+        jdbcTemplate.update("UPDATE `user` SET role = 1 WHERE id = ?", adminId);
+
+        JsonNode draft = post("/api/ai/assistant/ask", authorToken, Map.of(
+                "question", "帮我发布一条帖子，标题是“" + title + "”，内容是“仅用于链路验证测试”。",
+                "radiusKm", 10
+        ));
+        assertThat(draft.at("/code").asInt()).isZero();
+        String actionId = draft.at("/data/pendingAction/actionId").asText();
+        JsonNode confirmed = post("/api/ai/pending-actions/" + actionId + "/confirm", authorToken, Map.of(
+                "categoryId", firstCategoryId()
+        ));
+        assertCode(confirmed, 0);
+        long postId = confirmed.at("/data/postId").asLong();
+        assertThat(get("/api/posts/" + postId + "?radiusKm=10", authorToken).at("/data/title").asText())
+                .isEqualTo(title);
+
+        JsonNode createdReport = post("/api/reports", reporterToken, Map.of(
+                "targetType", "POST",
+                "targetId", postId,
+                "reason", "Chain verification report"
+        ));
+        assertCode(createdReport, 0);
+        long reportId = createdReport.at("/data").asLong();
+
+        assertCode(post("/api/admin/reports/" + reportId + "/process", adminToken, Map.of(
+                "status", "PROCESSED",
+                "adminNote", "Chain verification"
+        )), 0);
+
+        JsonNode logs = get("/api/admin/action-logs", adminToken);
+        assertCode(logs, 0);
+        assertThat(logs.at("/data/records")).anySatisfy(item -> {
+            assertThat(item.at("/targetType").asText()).isEqualTo("REPORT");
+            assertThat(item.at("/targetId").asLong()).isEqualTo(reportId);
+            assertThat(item.at("/action").asText()).isEqualTo("PROCESS_PROCESSED");
+            assertThat(item.at("/adminUserId").asLong()).isEqualTo(adminId);
+        });
+    }
+
+    @Test
+    void administratorsCanRestorePostsAndToggleUserStatusWithAuditEntries() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String adminUsername = "mga" + suffix;
+        String memberUsername = "mgm" + suffix;
+        String authorUsername = "mgc" + suffix;
+        String reporterUsername = "mgr" + suffix;
+        register(adminUsername, "123456", "Moderation Admin");
+        register(memberUsername, "123456", "Moderation Member");
+        register(authorUsername, "123456", "Moderation Author");
+        register(reporterUsername, "123456", "Moderation Reporter");
+        String adminToken = login(adminUsername, "123456");
+        String memberToken = login(memberUsername, "123456");
+        String authorToken = login(authorUsername, "123456");
+        String reporterToken = login(reporterUsername, "123456");
+        long adminId = get("/api/users/me", adminToken).at("/data/id").asLong();
+        long memberId = get("/api/users/me", memberToken).at("/data/id").asLong();
+        jdbcTemplate.update("UPDATE `user` SET role = 1 WHERE id = ?", adminId);
+
+        Long postId = createPost(authorToken, firstCategoryId(), "Restore flow " + suffix);
+        assertCode(put("/api/admin/posts/" + postId + "/hide", adminToken, null), 0);
+        assertCode(put("/api/admin/posts/" + postId + "/restore", adminToken, null), 0);
+        assertCode(put("/api/admin/posts/999999999/hide", adminToken, null), 40400);
+
+        assertCode(put("/api/admin/users/" + adminId + "/disable", adminToken, null), 40000);
+        assertCode(put("/api/admin/users/" + memberId + "/disable", adminToken, null), 0);
+        assertCode(put("/api/admin/users/" + memberId + "/enable", adminToken, null), 0);
+        assertCode(put("/api/admin/users/999999999/disable", adminToken, null), 40400);
+
+        long reportedPostId = createPost(authorToken, firstCategoryId(), "Status validation " + suffix);
+        JsonNode createdReport = post("/api/reports", reporterToken, Map.of(
+                "targetType", "POST",
+                "targetId", reportedPostId,
+                "reason", "Report for status validation"
+        ));
+        assertCode(createdReport, 0);
+        long reportId = createdReport.at("/data").asLong();
+        assertCode(post("/api/admin/reports/" + reportId + "/process", adminToken, Map.of(
+                "status", "PENDING"
+        )), 40000);
+        assertCode(post("/api/admin/reports/" + reportId + "/process", adminToken, Map.of(
+                "status", "NOT_A_STATUS"
+        )), 40000);
+        assertCode(post("/api/admin/reports/" + reportId + "/process", adminToken, Map.of(
+                "status", "REJECTED",
+                "adminNote", "Rejected after review"
+        )), 0);
+
+        JsonNode logs = get("/api/admin/action-logs", adminToken);
+        assertCode(logs, 0);
+        assertThat(logs.at("/data/records")).anySatisfy(item -> {
+            assertThat(item.at("/targetType").asText()).isEqualTo("POST");
+            assertThat(item.at("/targetId").asLong()).isEqualTo(postId);
+            assertThat(item.at("/action").asText()).isEqualTo("RESTORE_POST");
+        });
+        assertThat(logs.at("/data/records")).anySatisfy(item -> {
+            assertThat(item.at("/targetType").asText()).isEqualTo("USER");
+            assertThat(item.at("/targetId").asLong()).isEqualTo(memberId);
+            assertThat(item.at("/action").asText()).isEqualTo("DISABLE_USER");
+        });
+        assertThat(logs.at("/data/records")).anySatisfy(item -> {
+            assertThat(item.at("/action").asText()).isEqualTo("PROCESS_REJECTED");
+        });
+    }
+
+    @Test
     void directPostInteractionsAllowPostsOutsideRecommendationScope() throws Exception {
         String suffix = String.valueOf(System.nanoTime());
         String localUsername = "local_" + suffix;

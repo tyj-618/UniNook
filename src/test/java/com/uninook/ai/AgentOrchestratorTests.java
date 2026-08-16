@@ -2,6 +2,8 @@ package com.uninook.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uninook.auth.CurrentUserService;
+import com.uninook.common.ErrorCode;
+import com.uninook.exception.BusinessException;
 import com.uninook.post.PostService;
 import com.uninook.school.CampusScope;
 import com.uninook.user.UserProfile;
@@ -13,7 +15,10 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class AgentOrchestratorTests {
 
@@ -246,6 +251,32 @@ class AgentOrchestratorTests {
                 .get()
                 .extracting(PendingAction::title, PendingAction::content)
                 .containsExactly("Lost and found test", "Verification only");
+    }
+
+    @Test
+    void propagatesModelAvailabilityErrorsInsteadOfMaskingThem() {
+        AiModelClient failingClient = mock(AiModelClient.class);
+        when(failingClient.generateWithTools(any(), any())).thenThrow(
+                new BusinessException(ErrorCode.INTERNAL_ERROR, "模型服务暂不可用"));
+        ToolRegistry registry = new ToolRegistry(List.of(new CapturingReadTool("search_posts")));
+        ToolCallExecutor executor = new ToolCallExecutor(registry, new ToolSecurityValidator(new ObjectMapper()));
+        AgentOrchestrator failingOrchestrator = new AgentOrchestrator(failingClient, registry, executor, properties);
+
+        assertThatThrownBy(() -> failingOrchestrator.run(List.of(userMessage()), context))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("模型服务暂不可用");
+    }
+
+    @Test
+    void rejectsABlankFinalAnswerAfterToolExecution() {
+        CapturingReadTool tool = new CapturingReadTool("search_posts");
+        modelClient.scriptToolResponses(
+                toolCall("search_posts", "{\"keyword\":\"library\"}"),
+                new AgentModelResponse("   ", List.of(), "request-blank"));
+
+        assertThatThrownBy(() -> orchestrator(tool).run(List.of(userMessage()), context))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("智能问答服务未返回有效内容");
     }
 
     private AgentOrchestrator orchestrator(AgentTool... tools) {

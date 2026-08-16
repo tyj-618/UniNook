@@ -12,3 +12,7 @@ spring:
 campuscircle:
   view-count:
     flush-interval-seconds: 3600
+
+logging:
+  level:
+    com.uninook.ai.PromptBuilder: DEBUG

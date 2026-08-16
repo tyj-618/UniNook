@@ -1,6 +1,8 @@
 package com.uninook.ai;
 
 import com.uninook.auth.CurrentUserService;
+import com.uninook.common.ErrorCode;
+import com.uninook.exception.BusinessException;
 import com.uninook.school.CampusScope;
 import com.uninook.school.SchoolService;
 import com.uninook.user.UserMapper;
@@ -14,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -169,6 +172,26 @@ class AiAssistantServiceTests {
         assertThat(response.insufficientEvidence()).isTrue();
         assertThat(streamedResponse.answer()).isEqualTo(AiAssistantService.INSUFFICIENT_EVIDENCE_MESSAGE);
         assertThat(chunks).containsExactly(AiAssistantService.INSUFFICIENT_EVIDENCE_MESSAGE);
+    }
+
+    @Test
+    void propagatesModelTimeoutFromAskWithoutMaskingIt() {
+        AiModelClient failingClient = mock(AiModelClient.class);
+        when(failingClient.generateWithTools(any(), any()))
+                .thenThrow(new BusinessException(ErrorCode.INTERNAL_ERROR, "模型调用超时"));
+        AiProperties timeoutProperties = new AiProperties();
+        AiAssistantService failingService = new AiAssistantService(
+                currentUserService, userMapper, schoolService, postRetriever,
+                new PromptBuilder(), failingClient,
+                new AiRequestRateLimiter(timeoutProperties, (userId, limit) -> true),
+                new InMemoryChatSessionStore(timeoutProperties),
+                new SlidingWindowChatContextCompressor(timeoutProperties),
+                agentOrchestrator(failingClient, timeoutProperties), new InMemoryChatSessionLockManager());
+
+        assertThatThrownBy(() -> failingService.ask("Bearer token",
+                new AiAssistantRequest("图书馆几点开门", CampusScope.CAMPUS, null, "timeout-1")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("模型调用超时");
     }
 
     @Test

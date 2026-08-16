@@ -103,6 +103,60 @@ class PendingActionServiceTests {
         assertThat(service.loadForUser(7L, summary.actionId())).isEmpty();
     }
 
+    @Test
+    void expiredDraftIsRejectedForConfirmCancelAndLoad() {
+        AiProperties properties = new AiProperties();
+        InMemoryPendingActionStore store = new InMemoryPendingActionStore();
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        when(currentUserService.requireUserId("Bearer owner")).thenReturn(7L);
+        PendingActionService service = new PendingActionService(store, properties, currentUserService,
+                mock(PostService.class));
+        PendingAction expired = new PendingAction("expired-action", PendingActionType.CREATE_POST, 7L,
+                "Expired draft", "Expired content", java.time.Instant.now().minusSeconds(60));
+        store.save(expired);
+
+        assertThat(service.loadForUser(7L, "expired-action")).isEmpty();
+        assertThatThrownBy(() -> service.confirmPost("Bearer owner", "expired-action", 3L))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.cancel("Bearer owner", "expired-action"))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void zeroTtlDraftExpiresImmediately() {
+        AiProperties properties = new AiProperties();
+        properties.setPendingActionTtlSeconds(0);
+        InMemoryPendingActionStore store = new InMemoryPendingActionStore();
+        PendingActionService service = service(store, properties);
+
+        PendingActionSummary summary = service.preparePostDraft(context(7L), Map.of(
+                "title", "Lost item",
+                "content", "A blue umbrella was found."
+        ));
+
+        assertThat(service.loadForUser(7L, summary.actionId())).isEmpty();
+    }
+
+    @Test
+    void strangerCannotConfirmAnotherUsersDraft() {
+        AiProperties properties = new AiProperties();
+        InMemoryPendingActionStore store = new InMemoryPendingActionStore();
+        CurrentUserService currentUserService = mock(CurrentUserService.class);
+        PostService postService = mock(PostService.class);
+        when(currentUserService.requireUserId("Bearer owner")).thenReturn(7L);
+        when(currentUserService.requireUserId("Bearer stranger")).thenReturn(8L);
+        PendingActionService service = new PendingActionService(store, properties, currentUserService, postService);
+        PendingActionSummary summary = service.preparePostDraft(context(7L), Map.of(
+                "title", "Lost item",
+                "content", "A blue umbrella was found."
+        ));
+
+        assertThatThrownBy(() -> service.confirmPost("Bearer stranger", summary.actionId(), 3L))
+                .isInstanceOf(BusinessException.class);
+        verify(postService, times(0)).createPost(any(), any(CreatePostRequest.class));
+        assertThat(service.loadForUser(7L, summary.actionId())).isPresent();
+    }
+
     private PendingActionService service(InMemoryPendingActionStore store, AiProperties properties) {
         return new PendingActionService(store, properties, mock(CurrentUserService.class), mock(PostService.class));
     }
