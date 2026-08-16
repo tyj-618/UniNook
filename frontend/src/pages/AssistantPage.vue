@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, CircleAlert, RefreshCw, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, X } from '@lucide/vue'
+import { Check, ChevronDown, ChevronUp, CircleAlert, RefreshCw, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, X } from '@lucide/vue'
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { authStore } from '../auth/auth.ts'
 import { cancelPendingAction, confirmPendingPost, streamAssistant, submitAssistantFeedback } from '../api/assistant.ts'
@@ -34,6 +34,7 @@ const exampleQuestions = [
   '学校周边有什么好吃的？',
   '最近校园里有什么活动？',
 ]
+const visibleReferenceCount = 3
 const question = ref('')
 const conversation = ref<ConversationTurn[]>(loadConversation())
 const scope = ref<CampusScope>(conversation.value.at(-1)?.scope ?? 'NEARBY_10')
@@ -44,6 +45,17 @@ const sessionId = ref(loadSessionId())
 const categories = ref<Category[]>([])
 const isLoadingCategories = ref(false)
 const feedbackSubmittingTurnId = ref<string | null>(null)
+const expandedReferenceTurnIds = ref(new Set<string>())
+
+function toggleReferences(turn: ConversationTurn): void {
+  const expanded = new Set(expandedReferenceTurnIds.value)
+  if (expanded.has(turn.id)) {
+    expanded.delete(turn.id)
+  } else {
+    expanded.add(turn.id)
+  }
+  expandedReferenceTurnIds.value = expanded
+}
 
 watch(conversation, saveConversation, { deep: true })
 
@@ -421,11 +433,18 @@ function scopeLabel(value: CampusScope): string {
           <p v-if="turn.feedbackError" class="assistant-feedback__error"><CircleAlert :size="15" />{{ turn.feedbackError }}</p>
           <div v-if="turn.references.length" class="assistant-references">
             <h2>参考帖子</h2>
-            <RouterLink v-for="reference in turn.references" :key="reference.postId" class="reference-item"
+            <RouterLink v-for="reference in expandedReferenceTurnIds.has(turn.id) ? turn.references : turn.references.slice(0, visibleReferenceCount)"
+              :key="reference.postId" class="reference-item"
               :to="{ name: 'post-detail', params: { id: reference.postId }, query: { scope: turn.scope } }">
-              <strong>{{ reference.title }}</strong>
-              <span>{{ reference.schoolName }} · {{ reference.excerpt }}</span>
+              <strong class="reference-item__title">{{ reference.title }}</strong>
+              <span class="reference-item__school">{{ reference.schoolName }}</span>
+              <span class="reference-item__excerpt">{{ reference.excerpt }}</span>
             </RouterLink>
+            <button v-if="turn.references.length > visibleReferenceCount" type="button" class="text-button assistant-references__toggle"
+              @click="toggleReferences(turn)">
+              <template v-if="expandedReferenceTurnIds.has(turn.id)"><ChevronUp :size="15" />收起</template>
+              <template v-else><ChevronDown :size="15" />查看更多 {{ turn.references.length - visibleReferenceCount }} 条参考</template>
+            </button>
           </div>
           <section v-if="turn.pendingAction?.type === 'CREATE_POST'" class="assistant-pending-post">
             <template v-if="turn.pendingActionStatus === 'pending' || turn.pendingActionStatus === 'confirming'">
