@@ -382,13 +382,13 @@ function scopeLabel(value: CampusScope): string {
           <p class="assistant-message__meta">你 · {{ scopeLabel(turn.scope) }}</p>
           <p>{{ turn.question }}</p>
         </div>
-        <div class="assistant-message assistant-message--assistant">
+        <div class="assistant-message assistant-message--assistant" :class="{ 'assistant-message--streaming': turn.status === 'streaming' }">
           <button v-if="turn.status === 'cancelled' || turn.status === 'failed'" type="button" class="assistant-turn__refresh"
             :disabled="isSubmitting" @click="refreshTurn(turn)">
             <RefreshCw :size="14" />刷新
           </button>
           <p class="assistant-message__meta">校园助手</p>
-          <p>{{ turn.answer || '正在生成回答…' }}</p>
+          <p class="assistant-message__answer">{{ turn.answer || '正在生成回答…' }}</p>
           <p v-if="turn.status === 'cancelled'" class="muted">已停止生成，以上为已收到的内容。</p>
           <p v-if="turn.status === 'failed'" class="muted">本次回答未完成，请重新提问。</p>
           <p v-if="turn.insufficientEvidence && turn.answer !== insufficientEvidenceMessage" class="muted">
