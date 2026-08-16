@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -103,12 +104,15 @@ public class ElasticsearchPostIndexClient {
 
     private List<Long> executeSearch(Map<String, Object> body) {
         ensureIndex();
-        JsonNode response = restClient.post()
+        // Read the payload as a String and parse it with Jackson 2: RestClient's default
+        // converters use Jackson 3 in Spring Boot 4, which cannot deserialize Jackson 2 JsonNode.
+        String responseBody = restClient.post()
                 .uri("/{index}/_search", properties.getPostIndex())
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .body(JsonNode.class);
+                .body(String.class);
+        JsonNode response = parseTree(responseBody);
         if (response == null) {
             return List.of();
         }
@@ -179,6 +183,17 @@ public class ElasticsearchPostIndexClient {
     private Map<String, Object> toDocumentBody(PostSearchDocument document) {
         return objectMapper.convertValue(document, new TypeReference<>() {
         });
+    }
+
+    private JsonNode parseTree(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(responseBody);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Elasticsearch returned an invalid JSON payload", exception);
+        }
     }
 
     private static SimpleClientHttpRequestFactory requestFactory(int timeoutSeconds) {

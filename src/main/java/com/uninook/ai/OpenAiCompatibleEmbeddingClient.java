@@ -3,6 +3,7 @@ package com.uninook.ai;
 import com.uninook.common.ErrorCode;
 import com.uninook.exception.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,6 +24,10 @@ import java.util.Map;
 @Component
 @ConditionalOnProperty(prefix = "campuscircle.search", name = "embedding-provider", havingValue = "openai-compatible")
 public class OpenAiCompatibleEmbeddingClient implements EmbeddingClient {
+
+    // Tree parsing stays on Jackson 2: RestClient's default converters use Jackson 3 in
+    // Spring Boot 4 and cannot deserialize Jackson 2 JsonNode bodies.
+    private static final ObjectMapper TREE_MAPPER = new ObjectMapper();
 
     private final SearchProperties properties;
     private final RestClient restClient;
@@ -43,12 +49,13 @@ public class OpenAiCompatibleEmbeddingClient implements EmbeddingClient {
         request.put("input", text == null ? "" : text);
         request.put("encoding_format", "float");
 
-        JsonNode response = restClient.post()
+        String responseBody = restClient.post()
                 .uri("/embeddings")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(request)
                 .retrieve()
-                .body(JsonNode.class);
+                .body(String.class);
+        JsonNode response = parseTree(responseBody);
         JsonNode values = response == null ? null : response.path("data").path(0).path("embedding");
         if (values == null || !values.isArray()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Embedding provider returned an invalid response");
@@ -63,6 +70,17 @@ public class OpenAiCompatibleEmbeddingClient implements EmbeddingClient {
                     "Embedding dimension does not match CAMPUSCIRCLE_SEARCH_EMBEDDING_DIMENSIONS");
         }
         return vector;
+    }
+
+    private static JsonNode parseTree(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            return TREE_MAPPER.readTree(responseBody);
+        } catch (IOException exception) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Embedding provider returned an invalid response");
+        }
     }
 
     private static String require(String value, String variableName) {
