@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { ArrowLeft, CircleAlert, Eye, Flag, Heart, MapPinned, MessageCircle, Pencil, Reply, Send, Trash2 } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, Flag } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createPostComment, deletePost, deletePostComment, getPostComments, getPostDetail, likeComment, likePost, unlikeComment, unlikePost, updatePost } from '../api/posts.ts'
@@ -9,11 +9,12 @@ import { submitContentReport } from '../api/reports.ts'
 import { errorMessageOf } from '../api/errors.ts'
 import { authStore } from '../auth/auth.ts'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import PostCommentForm from '../components/PostCommentForm.vue'
+import PostCommentList from '../components/PostCommentList.vue'
+import PostDetailHeader from '../components/PostDetailHeader.vue'
 import QuestionAnswerPanel from '../components/QuestionAnswerPanel.vue'
 import QuestionTrackingPanel from '../components/QuestionTrackingPanel.vue'
 import type { CampusScope, PostComment, PostDetail, QuestionSourceSummary, QuestionTracking, ReportTargetType } from '../types/api.ts'
-import { submitOnEnter } from '../utils/submitOnEnter.ts'
-import { formatCompactDateTime } from '../utils/date.ts'
 import { readFeedPreferences } from '../utils/feedPreferences.ts'
 
 interface PostContext {
@@ -28,7 +29,6 @@ interface PostContext {
 type PendingDelete = { kind: 'post' } | { kind: 'comment'; comment: PostComment }
 type ReportTarget = { type: ReportTargetType; id: number; label: string }
 
-const replyBatchSize = 3
 const campusScopes = new Set<CampusScope>(['CAMPUS', 'UNIVERSITY', 'NEARBY_10', 'NEARBY_20', 'CITY'])
 const route = useRoute()
 const router = useRouter()
@@ -55,29 +55,14 @@ const activeCommentQuestionId = ref<number | null>(null)
 const commentQuestionText = ref('')
 const isSubmittingCommentQuestion = ref(false)
 const isEditingPost = ref(false)
-const editTitle = ref('')
-const editContent = ref('')
 const pendingDelete = ref<PendingDelete | null>(null)
 const pendingReport = ref<ReportTarget | null>(null)
 const reportReason = ref('')
 const isSubmittingReport = ref(false)
-const visibleRepliesByRoot = ref<Record<number, number>>({})
-const expandedReplyRoots = ref<Set<number>>(new Set())
+const replyFocus = ref<{ commentId: number | null; version: number }>({ commentId: null, version: 0 })
 const questionPanelVersion = ref(0)
 const answerPanelVersion = ref(0)
 let activeRequest: AbortController | null = null
-
-const visibleComments = computed(() => comments.value.filter((comment) => {
-  if (comment.rootCommentId === null) return true
-  const limit = visibleRepliesByRoot.value[comment.rootCommentId] ?? replyBatchSize
-  const replies = comments.value.filter((item) => item.rootCommentId === comment.rootCommentId)
-  return replies.findIndex((item) => item.id === comment.id) < limit
-}))
-
-const commentQuestionItems = computed(() => comments.value.flatMap((comment) => {
-  const question = commentQuestion(comment)
-  return question ? [{ comment, question }] : []
-}))
 
 const selectedPostQuestion = computed(() => postQuestion.value?.id === selectedPostQuestionId.value ? postQuestion.value : null)
 
@@ -127,22 +112,6 @@ function readPostContext(): PostContext | null {
 }
 
 function isPostAuthor(): boolean { return post.value?.author.id === authStore.state.user?.id }
-function isCommentAuthor(comment: PostComment): boolean { return comment.author.id === authStore.state.user?.id }
-function isPostAuthorComment(comment: PostComment): boolean { return comment.author.id === post.value?.author.id }
-function canCreateCommentQuestion(comment: PostComment): boolean { return isCommentAuthor(comment) && comment.rootCommentId === null }
-function commentQuestion(comment: PostComment): QuestionSourceSummary | null { return commentQuestions.value[comment.id] ?? null }
-function questionStatusText(question: QuestionSourceSummary): string { return question.status === 'OPEN' ? '进行中' : '已完成' }
-
-function initializeReplyVisibility(focusCommentId: number | null): void {
-  visibleRepliesByRoot.value = {}
-  expandedReplyRoots.value = new Set()
-  const focusedComment = comments.value.find((comment) => comment.id === focusCommentId)
-  if (!focusedComment?.rootCommentId) return
-  const replies = comments.value.filter((comment) => comment.rootCommentId === focusedComment.rootCommentId)
-  const focusedIndex = replies.findIndex((comment) => comment.id === focusCommentId)
-  visibleRepliesByRoot.value = { [focusedComment.rootCommentId]: Math.max(replyBatchSize, focusedIndex + 1) }
-  expandedReplyRoots.value = new Set([focusedComment.rootCommentId])
-}
 
 async function afterPaint(): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
@@ -223,7 +192,7 @@ async function loadComments(context: PostContext, signal?: AbortSignal): Promise
       if (left.rootCommentId !== null && right.rootCommentId === null) return 1
       return left.createdAt.localeCompare(right.createdAt) || left.id - right.id
     })
-    initializeReplyVisibility(context.commentId)
+    replyFocus.value = { commentId: context.commentId, version: replyFocus.value.version + 1 }
     await loadCommentQuestions()
   } finally {
     isCommentLoading.value = false
@@ -263,22 +232,6 @@ async function loadPage(): Promise<void> {
       activeRequest = null
     }
   }
-}
-
-function replyTotal(rootCommentId: number): number { return comments.value.filter((comment) => comment.rootCommentId === rootCommentId).length }
-function visibleReplyCount(rootCommentId: number): number { return Math.min(visibleRepliesByRoot.value[rootCommentId] ?? replyBatchSize, replyTotal(rootCommentId)) }
-function remainingReplies(rootCommentId: number): number { return Math.max(replyTotal(rootCommentId) - visibleReplyCount(rootCommentId), 0) }
-function isLastVisibleReply(comment: PostComment): boolean {
-  if (comment.rootCommentId === null) return false
-  const visibleReplies = visibleComments.value.filter((item) => item.rootCommentId === comment.rootCommentId)
-  return visibleReplies.at(-1)?.id === comment.id && remainingReplies(comment.rootCommentId) > 0
-}
-function expandReplies(rootCommentId: number): void {
-  visibleRepliesByRoot.value = { ...visibleRepliesByRoot.value, [rootCommentId]: visibleReplyCount(rootCommentId) + replyBatchSize }
-  expandedReplyRoots.value = new Set([...expandedReplyRoots.value, rootCommentId])
-}
-function expandLabel(rootCommentId: number): string {
-  return expandedReplyRoots.value.has(rootCommentId) ? '继续展开' : `展开其余 ${remainingReplies(rootCommentId)} 条追评`
 }
 
 function userProfileTarget(userId: number, commentId?: number) {
@@ -333,9 +286,13 @@ function cancelReply(): void {
 }
 
 function openCommentQuestionComposer(comment: PostComment): void {
-  if (!canCreateCommentQuestion(comment) || commentQuestion(comment)) return
+  if (!isCommentQuestionAllowed(comment)) return
   activeCommentQuestionId.value = comment.id
   commentQuestionText.value = ''
+}
+
+function isCommentQuestionAllowed(comment: PostComment): boolean {
+  return comment.author.id === authStore.state.user?.id && comment.rootCommentId === null && commentQuestions.value[comment.id] === undefined
 }
 
 function closeCommentQuestionComposer(): void {
@@ -345,7 +302,7 @@ function closeCommentQuestionComposer(): void {
 
 async function submitCommentQuestion(comment: PostComment): Promise<void> {
   const content = commentQuestionText.value.trim()
-  if (!content || !canCreateCommentQuestion(comment) || commentQuestion(comment) || isSubmittingCommentQuestion.value) return
+  if (!content || !isCommentQuestionAllowed(comment) || isSubmittingCommentQuestion.value) return
   isSubmittingCommentQuestion.value = true
   try {
     const created = await createQuestion('COMMENT', comment.id, content)
@@ -377,10 +334,10 @@ async function startCandidateAnswer(question: QuestionTracking): Promise<void> {
 
 function cancelPostCandidateAnswer(): void { selectedPostQuestionId.value = null }
 
-async function handleCommentSubmit(): Promise<void> {
+async function handleCommentSubmit(rawContent: string): Promise<void> {
   const context = readPostContext()
   const currentUserId = authStore.state.user?.id
-  const content = commentContent.value.trim()
+  const content = rawContent.trim()
   if (!context || !post.value || !currentUserId || isSubmittingComment.value) return
   if (!content) { interactionMessage.value = '评论内容不能为空。'; return }
   const answerQuestionId = selectedPostQuestion.value?.status === 'OPEN' ? selectedPostQuestion.value.id : undefined
@@ -455,17 +412,15 @@ async function confirmDelete(): Promise<void> {
 
 function startEditPost(): void {
   if (!post.value) return
-  editTitle.value = post.value.title
-  editContent.value = post.value.content
   isEditingPost.value = true
 }
 function cancelEditPost(): void { isEditingPost.value = false }
-async function savePost(): Promise<void> {
+async function savePost(title: string, content: string): Promise<void> {
   const context = readPostContext()
-  if (!context || !post.value || isSavingPost.value || !editTitle.value.trim() || !editContent.value.trim()) return
+  if (!context || !post.value || isSavingPost.value || !title.trim() || !content.trim()) return
   isSavingPost.value = true
   try {
-    await updatePost(context.postId, post.value.category.id, editTitle.value.trim(), editContent.value.trim())
+    await updatePost(context.postId, post.value.category.id, title.trim(), content.trim())
     isEditingPost.value = false
     await loadPage()
   } catch (error) { interactionMessage.value = errorMessageOf(error, '帖子修改失败，请稍后重试。') } finally { isSavingPost.value = false }
@@ -491,95 +446,33 @@ onBeforeUnmount(() => activeRequest?.abort())
 <template>
   <section class="content-page post-detail-page">
     <RouterLink class="detail-back" :to="backTarget"><ArrowLeft :size="18" />返回 {{ backLabel.replace('返回', '') }}</RouterLink>
-    <section v-if="isLoading" class="empty-feed"><h2>正在加载帖子...</h2></section>
-    <section v-else-if="errorMessage" class="empty-feed"><CircleAlert :size="24" /><h2>无法查看该帖子</h2><p>{{ errorMessage }}</p><button class="primary-button" type="button" @click="loadPage">重新加载</button></section>
-    <template v-else-if="post">
-      <article class="post-detail">
-        <div class="post-meta"><span>{{ post.school.name }}<template v-if="post.school.campusName"> · {{ post.school.campusName }}</template></span><span>{{ post.category.name }}</span><span>{{ formatCompactDateTime(post.createdAt) }}</span><span v-if="post.updatedAt !== post.createdAt">修改于 {{ formatCompactDateTime(post.updatedAt) }}</span></div>
-        <div v-if="isPostAuthor()" class="post-owner-actions"><button class="text-button" type="button" @click="startEditPost"><Pencil :size="14" />修改</button><button class="text-button danger" type="button" @click="requestDeletePost"><Trash2 :size="14" />删除</button></div>
-        <template v-if="isEditingPost"><form class="editor-form post-edit-form" @submit.prevent="savePost"><label>标题<input v-model="editTitle" maxlength="100" /></label><label>正文<textarea v-model="editContent" rows="8" maxlength="5000" @keydown="submitOnEnter($event, savePost)" /></label><div class="page-actions"><button class="text-button" type="button" @click="cancelEditPost">取消</button><button class="primary-button" type="submit" :disabled="isSavingPost || !editTitle.trim() || !editContent.trim()">{{ isSavingPost ? '保存中...' : '保存修改' }}</button></div></form></template>
-        <template v-else><h1>{{ post.title }}</h1><div class="post-author"><RouterLink class="post-author-avatar" :to="userProfileTarget(post.author.id)" :aria-label="`查看 ${post.author.nickname} 的主页`"><img v-if="post.author.avatarUrl" :src="post.author.avatarUrl" alt="" /><template v-else>{{ post.author.nickname.slice(0, 1).toUpperCase() }}</template></RouterLink><span>发布者：</span><RouterLink :to="userProfileTarget(post.author.id)">{{ post.author.nickname }}</RouterLink></div><div class="post-content">{{ post.content }}</div></template>
-        <div v-if="!isEditingPost" class="post-detail-footer"><div class="post-stats"><span><Eye :size="16" />{{ post.viewCount }}</span><span><MessageCircle :size="16" />{{ post.commentCount }}</span></div><div class="post-detail-actions"><button v-if="!isPostAuthor()" class="text-button" type="button" @click="openReport('POST', post.id, '这篇帖子')"><Flag :size="15" />举报</button><button class="like-button" :class="{ active: post.liked }" type="button" :disabled="isLiking" @click="handleLike"><Heart :size="17" :fill="post.liked ? 'currentColor' : 'none'" />{{ post.liked ? '已赞' : '点赞' }} {{ post.likeCount }}</button></div></div>
-      </article>
+    <PostDetailHeader :post="post" :is-post-author="isPostAuthor()" :is-loading="isLoading" :error-message="errorMessage"
+      :is-editing-post="isEditingPost" :is-liking="isLiking" :is-saving-post="isSavingPost" :user-profile-target="userProfileTarget"
+      @edit-post="startEditPost" @cancel-edit="cancelEditPost" @save-edit="savePost" @delete-post="requestDeletePost"
+      @like="handleLike" @report="openReport" @reload="loadPage" />
 
+    <template v-if="post">
       <section v-if="!isEditingPost" class="post-question-workspace">
         <QuestionTrackingPanel :key="questionPanelVersion" source-type="POST" :source-id="post.id" :can-manage="isPostAuthor()" @loaded="handleQuestionLoaded" @updated="handleQuestionUpdated" @answer-requested="startCandidateAnswer" />
         <QuestionAnswerPanel v-if="postQuestion" :key="`${postQuestion.id}-${postQuestion.status}-${answerPanelVersion}`" :question="postQuestion" :can-manage="isPostAuthor()" @updated="handleQuestionAnswerUpdated" />
       </section>
 
-      <section v-if="commentQuestionItems.length > 0" class="comment-question-section" aria-labelledby="comment-questions-heading">
-        <div class="question-tracking-heading">
-          <div><p class="eyebrow">COMMENT QUESTIONS</p><h2 id="comment-questions-heading">评论中的问题</h2></div>
-          <span class="comment-question-count">{{ commentQuestionItems.length }} 个问题</span>
-        </div>
-        <div class="comment-question-summary-list">
-          <article v-for="item in commentQuestionItems" :key="item.question.id" class="comment-question-summary">
-            <div>
-              <div class="comment-question-summary-meta"><span class="question-status" :class="`question-status--${item.question.status.toLowerCase()}`">{{ questionStatusText(item.question) }}</span><span>来自 {{ item.comment.author.nickname }} 的评论</span></div>
-              <strong>{{ item.question.questionText }}</strong>
-              <p v-if="item.question.approvedAnswerCount > 0">已通过 {{ item.question.approvedAnswerCount }} 条候选答复</p>
-            </div>
-            <div class="comment-question-actions">
-              <button class="text-button" type="button" @click="focusComment(item.comment.id)">查看评论</button>
-              <RouterLink class="text-button" :to="{ name: 'question-answer-list', params: { questionId: item.question.id }, query: { source: 'comment-questions', postId: post.id } }">候选答复</RouterLink>
-              <button v-if="item.question.status === 'OPEN' && item.question.asker.id !== authStore.state.user?.id" class="text-button" type="button" @click="startCommentQuestionAnswer(item.comment, item.question)"><Send :size="14" />快速作答</button>
-            </div>
-          </article>
-        </div>
-      </section>
-
       <section class="comments-section" aria-labelledby="comments-heading">
         <div class="comments-heading"><div><p class="eyebrow">DISCUSSION</p><h2 id="comments-heading">评论 {{ post.commentCount }}</h2></div></div>
-        <form class="comment-form" @submit.prevent="handleCommentSubmit"><div class="comment-form-heading"><label for="comment-content">参与讨论</label><button v-if="selectedPostQuestion" class="text-button" type="button" @click="cancelPostCandidateAnswer">取消候选答复</button></div><p v-if="selectedPostQuestion" class="candidate-answer-context">正在作为“{{ selectedPostQuestion.questionText }}”的候选答复</p><textarea id="comment-content" v-model="commentContent" maxlength="500" rows="4" placeholder="写下你的想法..." @keydown="submitOnEnter($event, handleCommentSubmit)" /><div class="comment-form-footer"><span>{{ commentContent.length }}/500 · Enter 发送，Shift + Enter 换行</span><button class="primary-button" type="submit" :disabled="isSubmittingComment || !commentContent.trim()"><Send :size="16" />{{ isSubmittingComment ? '发布中...' : '发布评论' }}</button></div></form>
+        <PostCommentForm :post="post" :selected-post-question="selectedPostQuestion" v-model:content="commentContent"
+          :is-submitting="isSubmittingComment" @submit-comment="handleCommentSubmit" @cancel-answer="cancelPostCandidateAnswer" />
         <p v-if="interactionMessage" class="form-error"><CircleAlert :size="16" />{{ interactionMessage }}</p>
-        <section v-if="isCommentLoading" class="comments-status"><p>正在加载评论...</p></section>
-        <section v-else-if="comments.length === 0" class="comments-status"><MapPinned :size="22" /><p>暂时还没有评论，来留下第一条讨论吧。</p></section>
-        <ol v-else class="comment-list">
-          <template v-for="comment in visibleComments" :key="comment.id">
-            <li :id="`comment-${comment.id}`" class="comment-item" :class="{ 'comment-item--reply': comment.rootCommentId !== null, 'comment-item--focused': comment.id === readPostContext()?.commentId }">
-              <RouterLink class="comment-avatar" :class="{ 'comment-avatar--image': comment.author.avatarUrl }" :to="userProfileTarget(comment.author.id, comment.id)">
-                <img v-if="comment.author.avatarUrl" :src="comment.author.avatarUrl" alt="" />
-                <template v-else>{{ comment.author.nickname.slice(0, 1).toUpperCase() }}</template>
-              </RouterLink>
-              <div class="comment-body">
-                <div class="comment-meta">
-                  <RouterLink class="comment-author-link" :to="userProfileTarget(comment.author.id, comment.id)">{{ comment.author.nickname }}</RouterLink>
-                  <span v-if="isPostAuthorComment(comment)" class="author-badge">作者</span>
-                  <span v-if="comment.author.schoolName" class="school-tag">{{ comment.author.schoolName }}<template v-if="comment.author.campusName"> · {{ comment.author.campusName }}</template></span>
-                  <span>{{ formatCompactDateTime(comment.createdAt) }}</span>
-                </div>
-                <p><template v-if="comment.replyToNickname">回复 <RouterLink v-if="comment.replyToUserId" class="reply-user-link" :to="userProfileTarget(comment.replyToUserId, comment.id)">@{{ comment.replyToNickname }}</RouterLink><strong v-else>@{{ comment.replyToNickname }}</strong>：</template>{{ comment.content }}</p>
-                <div v-if="commentQuestion(comment)" class="comment-question-inline">
-                  <div><span class="question-status" :class="`question-status--${commentQuestion(comment)!.status.toLowerCase()}`">{{ questionStatusText(commentQuestion(comment)!) }}</span><span>{{ commentQuestion(comment)!.questionText }}</span></div>
-                  <div class="comment-question-actions">
-                    <RouterLink class="text-button" :to="{ name: 'question-answer-list', params: { questionId: commentQuestion(comment)!.id }, query: { source: 'post', postId: post.id, commentId: comment.id } }">候选答复</RouterLink>
-                    <button v-if="commentQuestion(comment)!.status === 'OPEN' && commentQuestion(comment)!.asker.id !== authStore.state.user?.id" class="text-button" type="button" @click="startCommentQuestionAnswer(comment, commentQuestion(comment)!)"><Send :size="14" />快速作答</button>
-                  </div>
-                </div>
-                <div class="comment-actions">
-                  <button class="text-button" type="button" @click="startReply(comment)"><Reply :size="14" />{{ comment.rootCommentId === null ? '追评' : '回复' }}</button>
-                  <button v-if="canCreateCommentQuestion(comment) && !commentQuestion(comment)" class="text-button" type="button" @click="openCommentQuestionComposer(comment)">发起问题追踪</button>
-                  <button class="text-button" :class="{ active: comment.liked }" type="button" :disabled="likingCommentId === comment.id" @click="handleCommentLike(comment)"><Heart :size="14" :fill="comment.liked ? 'currentColor' : 'none'" />{{ comment.liked ? '已赞' : '点赞' }} {{ comment.likeCount }}</button>
-                  <button v-if="!isCommentAuthor(comment)" class="text-button" type="button" @click="openReport('COMMENT', comment.id, '这条评论')"><Flag :size="14" />举报</button>
-                  <button v-if="isCommentAuthor(comment)" class="text-button danger" type="button" @click="requestDeleteComment(comment)"><Trash2 :size="14" />删除</button>
-                </div>
-                <form v-if="activeCommentQuestionId === comment.id" class="inline-comment-form" @submit.prevent="submitCommentQuestion(comment)">
-                  <label :for="`comment-question-${comment.id}`">你想持续追踪什么答案？</label>
-                  <textarea :id="`comment-question-${comment.id}`" v-model="commentQuestionText" maxlength="300" rows="3" placeholder="写下需要追踪的问题..." autofocus @keydown="submitOnEnter($event, () => submitCommentQuestion(comment))" />
-                  <div><button class="text-button" type="button" @click="closeCommentQuestionComposer">取消</button><button class="primary-button" type="submit" :disabled="!commentQuestionText.trim() || isSubmittingCommentQuestion">{{ isSubmittingCommentQuestion ? '发起中...' : '确认发起' }}</button></div>
-                </form>
-                <form v-if="activeReplyCommentId === comment.id" class="inline-comment-form" @submit.prevent="handleInlineReply(comment)">
-                  <label :for="`reply-${comment.id}`">{{ inlineCandidateQuestionId ? '候选答复' : (comment.rootCommentId === null ? '追评' : `回复 ${comment.author.nickname}`) }}</label>
-                  <p v-if="inlineCandidateQuestionId" class="candidate-answer-context">仅会作为当前问题的候选答复提交</p>
-                  <textarea :id="`reply-${comment.id}`" v-model="inlineReplyContent" maxlength="500" rows="3" placeholder="写下你的评论..." @keydown="submitOnEnter($event, () => handleInlineReply(comment))" />
-                  <div><button class="text-button" type="button" @click="cancelReply">取消</button><button class="primary-button" type="submit" :disabled="!inlineReplyContent.trim() || submittingReplyCommentId === comment.id">{{ submittingReplyCommentId === comment.id ? '发布中...' : '发布' }}</button></div>
-                </form>
-              </div>
-            </li>
-            <li v-if="isLastVisibleReply(comment)" class="reply-expand-item"><button class="text-button" type="button" @click="expandReplies(comment.rootCommentId!)">{{ expandLabel(comment.rootCommentId!) }}</button></li>
-          </template>
-        </ol>
-        <div v-if="readPostContext()?.commentId" class="comment-focus-spacer" aria-hidden="true"></div>
+        <PostCommentList :post="post" :comments="comments" :is-comment-loading="isCommentLoading" :comment-questions="commentQuestions"
+          :focused-comment-id="readPostContext()?.commentId ?? null" :reply-focus="replyFocus" :liking-comment-id="likingCommentId"
+          :active-reply-comment-id="activeReplyCommentId" v-model:inline-reply-content="inlineReplyContent"
+          :inline-candidate-question-id="inlineCandidateQuestionId" :submitting-reply-comment-id="submittingReplyCommentId"
+          :active-comment-question-id="activeCommentQuestionId" v-model:comment-question-text="commentQuestionText"
+          :is-submitting-comment-question="isSubmittingCommentQuestion" :user-profile-target="userProfileTarget"
+          @like-comment="handleCommentLike" @start-reply="startReply" @cancel-reply="cancelReply" @submit-reply="handleInlineReply"
+          @open-question-composer="openCommentQuestionComposer" @close-question-composer="closeCommentQuestionComposer"
+          @submit-comment-question="submitCommentQuestion" @answer-comment-question="startCommentQuestionAnswer"
+          @focus-comment="focusComment" @report-comment="(comment) => openReport('COMMENT', comment.id, '这条评论')"
+          @delete-comment="requestDeleteComment" />
       </section>
     </template>
   </section>
@@ -595,7 +488,6 @@ onBeforeUnmount(() => activeRequest?.abort())
 </template>
 
 <style scoped>
-.post-detail-actions { display: flex; align-items: center; gap: 0.75rem; }
 .report-dialog-backdrop { position: fixed; inset: 0; z-index: var(--z-overlay); display: grid; place-items: center; padding: 1rem; background: var(--bg-overlay); }
 .report-dialog { width: min(100%, 520px); display: grid; gap: 1rem; padding: 1.5rem; border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-dialog); }
 .report-dialog h2 { margin: 0; }
